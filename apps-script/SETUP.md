@@ -11,7 +11,7 @@ itself stays hidden until an event has been opened through it:
    The dropdown is grouped by **Happening now / Upcoming / Past / Cancelled**
    and password-protected events are marked with a 🔒.
 2. **Enter the event's password** — the field only appears if the selected
-   event's `password` cell in the sheet is non-empty. The check happens
+   event's `event_password` cell in the sheet is non-empty. The check happens
    **server-side** in Apps Script; the password value is never sent to the
    browser.
 3. **The page opens** showing only that event's details.
@@ -23,9 +23,10 @@ password-protected event requires *that* event's password.
 
 ### Setting a password on an event
 
-The `Events` tab has a **`password`** column (header already added, column O).
-Type a password into that cell to protect the event; leave it blank for the
-event to open without one. Matching is exact after trimming whitespace.
+The `Events` tab has an **`event_password`** column (column O). Type a password
+into that cell to protect the event; leave it blank for the event to open
+without one. Matching is exact after trimming whitespace. (An older `password`
+header is still honored as a fallback, but the live sheet uses `event_password`.)
 
 ### The two actions behind the gate
 
@@ -50,7 +51,7 @@ nothing is inferred or invented:
 | `event_date` / `end_date` | header date range, the Playbook's event anchor, and every lead-up (−28/−14/−7/−1 days) and follow-up (+1/+7/+30–90 days) timeline date |
 | `location` | header location + event anchor |
 | `description` | short summary line under the header |
-| `password` | gate only — never displayed, never sent to the browser |
+| `event_password` | gate only — never displayed, never sent to the browser |
 
 Accuracy rules: dates are parsed only from the two formats the sheet actually
 uses (`M/D/YYYY` text and real date cells, which the script serializes as
@@ -66,7 +67,7 @@ a retry.
 > 🔐 **Security note:** the gate keeps event details out of the *page* until
 > the password is verified, and the password itself never leaves the server.
 > It is access gating for a shared workspace link, not hardened auth — anyone
-> with edit access to the sheet can read the `password` column.
+> with edit access to the sheet can read the `event_password` column.
 
 Nothing is written back to the sheet by this feature — both actions are
 read-only.
