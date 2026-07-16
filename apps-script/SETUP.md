@@ -59,8 +59,18 @@ this up.
 
 ## What the AI does
 
-For every contact it returns three things, judged **only** from the job title
-(accuracy over completeness — a blank/ambiguous title comes back as `Unknown`,
+**Every row and every column of the uploaded file is analyzed.** The parser
+reads every worksheet in the workbook (keeping the one with the most data
+rows), auto-detects the real header row even when title/blank rows sit above
+it, and carries **all** columns through — the four mapped fields (name,
+company, title, email) plus everything else (Department, Job Level, Job
+Function, Industry, …) in an `extra` object per lead. There is no row cap:
+the whole list is classified in batches of 20, and a failed batch is retried
+before its rows are counted as unprocessed.
+
+For every contact it returns three things, judged from the job title first,
+with role/level/function/department columns as corroborating signal (accuracy
+over completeness — if neither gives clear signal it comes back as `Unknown`,
 never a guess):
 
 | Field | Values | Feeds |
@@ -142,6 +152,11 @@ you want.
 Append **one row** to the `Custom_Prompts` tab so the persona is tunable without
 editing code. This is additive — it does not modify any existing row.
 
+> ⚠️ **Already added this row before?** Update its `instructions` cell to the
+> block below. The sheet copy **overrides** the embedded default, and the old
+> text told the model to judge *only* from the job title — it would ignore the
+> extra columns the page now sends.
+
 | Column | Value |
 | --- | --- |
 | `prompt_id` | any unique id, e.g. `event-lead-categorizer` |
@@ -157,16 +172,16 @@ Role
 You are an accuracy-obsessed SaaS marketing demand-generation expert and lead analyst working an event target list for a B2B go-to-market team. Your single, overriding objective is factual accuracy. Speed, completeness, and polish are all subordinate to accuracy. An incomplete classification that is fully accurate is a success. A complete classification with one guessed or fabricated detail is a failure.
 
 Task
-For each lead you receive (name, company, job title, email), determine three things and nothing more:
-1. icp_role  — the lead's role in the B2B buying group, judged ONLY from the job title.
-2. seniority_tier — the lead's organizational seniority, judged ONLY from the job title.
+For each lead you receive (name, company, job title, email, plus an optional "extra" object carrying every other column from the uploaded file — e.g. Department, Job Level, Job Function, Seniority, Industry), determine three things and nothing more:
+1. icp_role  — the lead's role in the B2B buying group, judged primarily from the job title, corroborated by any "extra" columns that explicitly describe the person's role, level, function or department.
+2. seniority_tier — the lead's organizational seniority, judged the same way: job title first, role/level/function/department columns in "extra" as supporting signal.
 3. normalized_company — the company name cleaned for consistent display. Formatting only. Never invent or change the company's identity.
 
 icp_role — choose EXACTLY one of these four values:
 - "Decision Maker" — holds budget authority or final sign-off. Executive and senior leadership: C-level (CIO, CISO, CTO, CEO, CFO, COO, Chief*), President, Owner, Founder, Partner, and VP/SVP/EVP. These people can say yes and fund it.
 - "Champion" — an internal owner/driver who advances the initiative and influences the decision from the inside, but usually needs sign-off from above. Function/team leaders: Director, Senior Director, Head of (team), Manager, Team Lead, Supervisor.
 - "Influencer" — an individual contributor or practitioner who evaluates, uses, or recommends the product but does not own the decision: Engineer, Administrator, Analyst, Architect, Specialist, Coordinator, Consultant, and similar non-management roles.
-- "Unknown" — the title is blank, a placeholder ("-", "—", "N/A", "TBD"), or genuinely ambiguous and does not clearly map to a role. Use this rather than guessing.
+- "Unknown" — the title is blank, a placeholder ("-", "—", "N/A", "TBD"), or genuinely ambiguous, AND no "extra" column explicitly describing role/level/function resolves it. Use this rather than guessing.
 
 seniority_tier — choose EXACTLY one of these five values (these are the only allowed strings):
 - "C-Suite" — Chief*, CxO (CIO/CISO/CTO/CEO/CFO/COO), President, Owner, Founder, Partner.
@@ -177,8 +192,8 @@ seniority_tier — choose EXACTLY one of these five values (these are the only a
 - If the title is missing or ambiguous, do not force a tier: use "Individual" only when there is at least weak signal, and reflect the uncertainty by setting icp_role to "Unknown" and confidence to "low".
 
 Accuracy rules (non-negotiable):
-- Judge role and seniority ONLY from the job-title text. Do NOT infer anything from the company name, the email address, or the person's name.
-- If the title is blank, a placeholder, or genuinely ambiguous, return icp_role "Unknown" and confidence "low". Never guess to look complete.
+- Judge role and seniority from the job-title text first. When the title is blank, a placeholder, or ambiguous, you MAY use "extra" columns that explicitly describe the person's role, level, function or department (e.g. "Job Level", "Seniority", "Department", "Job Function", "Management Level") to classify. Do NOT infer role or seniority from the company name, the email address, the person's name, or unrelated extra columns (industry, city, revenue, phone, notes, …).
+- If neither the title nor a role-describing extra column gives clear signal, return icp_role "Unknown" and confidence "low". Never guess to look complete.
 - normalized_company: fix ONLY capitalization, stray spacing, and obvious legal-suffix casing (e.g. "acme corp" → "Acme Corp", "INSIGHT ENTERPRISES" → "Insight Enterprises"). Do NOT expand abbreviations you are unsure about, invent a longer name, merge two companies, or change the identity. If company is blank or a placeholder, return an empty string "".
 - Never invent titles, roles, seniority, or company facts that are not supported by the input.
 - confidence reflects how clearly the title maps to the role/tier: "high", "medium", or "low".
@@ -208,9 +223,18 @@ CORS preflight Apps Script can't answer):
 {
   "action": "categorizeLeads",
   "leads": [
-    { "index": "u0", "name": "Jane Doe", "company": "acme corp", "title": "VP of IT", "email": "jane@acme.com" }
+    { "index": "u0", "name": "Jane Doe", "company": "acme corp", "title": "VP of IT",
+      "email": "jane@acme.com",
+      "extra": { "Department": "Information Technology", "Job Level": "VP-Level", "Industry": "Retail" } }
   ]
 }
+```
+
+`extra` carries every column of the uploaded file that isn't one of the four
+mapped fields (values capped at 200 chars, max 20 columns per lead, blanks
+omitted). Leads with no extra columns simply omit the key.
+
+```json
 ```
 
 **Response:**
@@ -239,8 +263,10 @@ safe. Unrecognized values are ignored rather than applied.
   a toast, and the app continues on the local heuristic.
 - **Key stays server-side.** Classification happens inside Apps Script; the page
   never receives the Anthropic key.
-- **Batch + cap.** Up to `AI_MAX` (400) contacts per run, 20 per request, so a
-  huge upload can't hang the browser or the script.
+- **Batched, no row cap.** The entire list is analyzed 20 leads per request
+  (sequentially, so the browser and script are never flooded), with one retry
+  per failed batch. The final toast reports exactly how many rows were
+  categorized and how many, if any, could not be processed.
 - **Upload supersedes.** Uploading a new file while an analysis is still running
   cancels the old run at its next batch (run token) — stale responses are
   discarded, so results can never land on the wrong list.

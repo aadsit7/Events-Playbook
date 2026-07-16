@@ -193,15 +193,22 @@ function doAnalyzeDocument(docId, driveUrl) {
     DriveApp.getFileById(tempDoc.id).setTrashed(true);
   } else if (mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
              mimeType === 'application/vnd.ms-excel') {
-    // Excel — convert to Google Sheet, extract text from first sheet
+    // Excel — convert to Google Sheet, extract text from EVERY worksheet so a
+    // multi-tab workbook is analyzed in full, not just its first tab.
     var tempSheet = Drive.Files.copy(
       { title: 'TEMP_ANALYZE_' + Date.now(), mimeType: 'application/vnd.google-apps.spreadsheet' },
       fileId
     );
     var ss = SpreadsheetApp.openById(tempSheet.id);
-    var sheet = ss.getSheets()[0];
-    var data = sheet.getDataRange().getValues();
-    extractedText = data.map(function(row) { return row.join(' | '); }).join('\n');
+    var sheets = ss.getSheets();
+    var parts = [];
+    for (var s = 0; s < sheets.length; s++) {
+      var data = sheets[s].getDataRange().getValues();
+      var text = data.map(function(row) { return row.join(' | '); }).join('\n');
+      if (text.replace(/[\s|]/g, '') === '') continue; // skip empty tabs
+      parts.push((sheets.length > 1 ? '=== Sheet: ' + sheets[s].getName() + ' ===\n' : '') + text);
+    }
+    extractedText = parts.join('\n\n');
     DriveApp.getFileById(tempSheet.id).setTrashed(true);
   } else if (mimeType === 'text/plain') {
     extractedText = file.getBlob().getDataAsString();
@@ -218,9 +225,10 @@ function doAnalyzeDocument(docId, driveUrl) {
     throw new Error('Could not extract meaningful text from this document');
   }
 
-  // Truncate if very long
-  if (extractedText.length > 15000) {
-    extractedText = extractedText.substring(0, 15000) + '\n\n[Document truncated — showing first 15,000 characters]';
+  // Truncate only when genuinely huge — the old 15,000-character cap cut off
+  // most real lead lists after a few hundred rows.
+  if (extractedText.length > 60000) {
+    extractedText = extractedText.substring(0, 60000) + '\n\n[Document truncated — showing first 60,000 characters]';
   }
 
   // Send to Claude to format as a clean, structured description
@@ -250,7 +258,7 @@ function doAnalyzeDocument(docId, driveUrl) {
     },
     payload: JSON.stringify({
       model: 'claude-sonnet-5',
-      max_tokens: 8000,
+      max_tokens: 16000,
       messages: [{ role: 'user', content: prompt }]
     }),
     muteHttpExceptions: true
@@ -372,7 +380,10 @@ var CATEGORIZER_LABEL = 'Event Lead Categorizer';
 
 /**
  * doCategorizeLeads
- * Input payload: { action:'categorizeLeads', leads:[{ index, name, company, title, email }] }
+ * Input payload: { action:'categorizeLeads', leads:[{ index, name, company, title, email, extra? }] }
+ *   `extra` is an optional object carrying EVERY additional column from the
+ *   uploaded file (e.g. Department, Job Level, Job Function, Industry) so the
+ *   persona can weigh the whole row, not just the four mapped fields.
  * Output JSON:   { ok:true, results:[{ index, icp_role, seniority_tier, normalized_company, confidence, rationale }] }
  *
  * The client sends the list in small batches (~20). This function classifies one
@@ -391,13 +402,27 @@ function doCategorizeLeads(payload) {
   var instructions = getCategorizerInstructions();
 
   var leadJson = JSON.stringify(leads.map(function (l, i) {
-    return {
+    var obj = {
       index: (l.index != null ? l.index : i),
       name: (l.name || ''),
       company: (l.company || ''),
       title: (l.title || ''),
       email: (l.email || '')
     };
+    // Forward the unmapped spreadsheet columns, bounded so a single wide row
+    // can never blow up the request.
+    if (l.extra && typeof l.extra === 'object') {
+      var extra = {}, n = 0;
+      for (var k in l.extra) {
+        if (!Object.prototype.hasOwnProperty.call(l.extra, k)) continue;
+        var v = String(l.extra[k] == null ? '' : l.extra[k]).trim();
+        if (!v) continue;
+        extra[String(k).substring(0, 60)] = v.substring(0, 200);
+        if (++n >= 20) break;
+      }
+      if (n) obj.extra = extra;
+    }
+    return obj;
   }));
 
   var prompt = instructions +
@@ -544,16 +569,16 @@ var DEFAULT_CATEGORIZER_INSTRUCTIONS = [
 'You are an accuracy-obsessed SaaS marketing demand-generation expert and lead analyst working an event target list for a B2B go-to-market team. Your single, overriding objective is factual accuracy. Speed, completeness, and polish are all subordinate to accuracy. An incomplete classification that is fully accurate is a success. A complete classification with one guessed or fabricated detail is a failure.',
 '',
 'Task',
-'For each lead you receive (name, company, job title, email), determine three things and nothing more:',
-'1. icp_role  — the lead’s role in the B2B buying group, judged ONLY from the job title.',
-'2. seniority_tier — the lead’s organizational seniority, judged ONLY from the job title.',
+'For each lead you receive (name, company, job title, email, plus an optional "extra" object carrying every other column from the uploaded file — e.g. Department, Job Level, Job Function, Seniority, Industry), determine three things and nothing more:',
+'1. icp_role  — the lead’s role in the B2B buying group, judged primarily from the job title, corroborated by any "extra" columns that explicitly describe the person’s role, level, function or department.',
+'2. seniority_tier — the lead’s organizational seniority, judged the same way: job title first, role/level/function/department columns in "extra" as supporting signal.',
 '3. normalized_company — the company name cleaned for consistent display. Formatting only. Never invent or change the company’s identity.',
 '',
 'icp_role — choose EXACTLY one of these four values:',
 '- "Decision Maker" — holds budget authority or final sign-off. Executive and senior leadership: C-level (CIO, CISO, CTO, CEO, CFO, COO, Chief*), President, Owner, Founder, Partner, and VP/SVP/EVP. These people can say yes and fund it.',
 '- "Champion" — an internal owner/driver who advances the initiative and influences the decision from the inside, but usually needs sign-off from above. Function/team leaders: Director, Senior Director, Head of (team), Manager, Team Lead, Supervisor.',
 '- "Influencer" — an individual contributor or practitioner who evaluates, uses, or recommends the product but does not own the decision: Engineer, Administrator, Analyst, Architect, Specialist, Coordinator, Consultant, and similar non-management roles.',
-'- "Unknown" — the title is blank, a placeholder ("-", "—", "N/A", "TBD"), or genuinely ambiguous and does not clearly map to a role. Use this rather than guessing.',
+'- "Unknown" — the title is blank, a placeholder ("-", "—", "N/A", "TBD"), or genuinely ambiguous, AND no "extra" column explicitly describing role/level/function resolves it. Use this rather than guessing.',
 '',
 'seniority_tier — choose EXACTLY one of these five values (these are the only allowed strings):',
 '- "C-Suite" — Chief*, CxO (CIO/CISO/CTO/CEO/CFO/COO), President, Owner, Founder, Partner.',
@@ -564,8 +589,8 @@ var DEFAULT_CATEGORIZER_INSTRUCTIONS = [
 '- If the title is missing or ambiguous, do not force a tier: use "Individual" only when there is at least weak signal, and reflect the uncertainty by setting icp_role to "Unknown" and confidence to "low".',
 '',
 'Accuracy rules (non-negotiable):',
-'- Judge role and seniority ONLY from the job-title text. Do NOT infer anything from the company name, the email address, or the person’s name.',
-'- If the title is blank, a placeholder, or genuinely ambiguous, return icp_role "Unknown" and confidence "low". Never guess to look complete.',
+'- Judge role and seniority from the job-title text first. When the title is blank, a placeholder, or ambiguous, you MAY use "extra" columns that explicitly describe the person’s role, level, function or department (e.g. "Job Level", "Seniority", "Department", "Job Function", "Management Level") to classify. Do NOT infer role or seniority from the company name, the email address, the person’s name, or unrelated extra columns (industry, city, revenue, phone, notes, …).',
+'- If neither the title nor a role-describing extra column gives clear signal, return icp_role "Unknown" and confidence "low". Never guess to look complete.',
 '- normalized_company: fix ONLY capitalization, stray spacing, and obvious legal-suffix casing (e.g. "acme corp" → "Acme Corp", "INSIGHT ENTERPRISES" → "Insight Enterprises"). Do NOT expand abbreviations you are unsure about, invent a longer name, merge two companies, or change the identity. If company is blank or a placeholder, return an empty string "".',
 '- Never invent titles, roles, seniority, or company facts that are not supported by the input.',
 '- confidence reflects how clearly the title maps to the role/tier: "high", "medium", or "low".',
