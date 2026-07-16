@@ -528,7 +528,7 @@ function jsonOut(obj) {
  * Shared reader for the Events tab. Returns each row as an object keyed by the
  * header row (event_id, title, description, event_date, end_date, event_type,
  * location, url, created_by, created_at, status, partner_id, checklist,
- * lead_count, password). Values are passed through verbatim — nothing is
+ * lead_count, event_password). Values are passed through verbatim — nothing is
  * inferred or rewritten. Dates that Sheets stores as real Date values are
  * serialized as yyyy-MM-dd in the spreadsheet's own time zone; text dates
  * (e.g. "11/19/2025") are returned as-is. Fully blank rows and rows without a
@@ -576,7 +576,14 @@ function eventKeyOf(row) {
   return id !== '' ? id : ('row-' + row._row);
 }
 
+// The Events tab's password column is named `event_password` (column O in the
+// live sheet). Some older copies used a plain `password` header, so check that as
+// a fallback. This value is the hinge of the whole gate: if the header lookup
+// misses, password protection silently switches OFF for every event AND the
+// secret would ride along in the openEvent payload — so read it defensively.
 function eventPasswordOf(row) {
+  var primary = String(row.event_password == null ? '' : row.event_password).trim();
+  if (primary !== '') return primary;
   return String(row.password == null ? '' : row.password).trim();
 }
 
@@ -646,7 +653,7 @@ function doOpenEvent(payload) {
   var out = {};
   for (var k in found) {
     if (!Object.prototype.hasOwnProperty.call(found, k)) continue;
-    if (k === 'password' || k === '_row') continue;
+    if (k === 'password' || k === 'event_password' || k === '_row') continue;
     out[k] = found[k];
   }
   if (typeof out.description === 'string' && out.description.length > 4000) {
