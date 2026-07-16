@@ -68,6 +68,18 @@ function doPost(e) {
       return doOpenEvent(payload);
     }
 
+    // NEW — persist the uploaded (and AI-categorized) contact list for an event
+    // into the Event_Contacts tab so it can be referenced on later opens.
+    if (payload.action === 'saveEventContacts') {
+      return doSaveEventContacts(payload);
+    }
+
+    // NEW — read back the contacts previously saved for one event so the
+    // workspace can prepopulate itself when the event is reopened.
+    if (payload.action === 'listEventContacts') {
+      return doListEventContacts(payload);
+    }
+
     if (payload.action === 'getConfig') {
       return doGetConfig();
     }
@@ -715,3 +727,206 @@ var DEFAULT_CATEGORIZER_INSTRUCTIONS = [
 '  }',
 ']'
 ].join('\n');
+
+// ============================================================
+// ============================================================
+// NEW — EVENT CONTACTS (per-event target list, saved back to the sheet)
+// Everything below this line is additive. It reads and writes ONLY a new
+// `Event_Contacts` tab (created on first save, exactly like the existing
+// `Opportunity_Documents` tab is), and — best-effort — refreshes the
+// `lead_count` cell of the matching Events row. No existing tab, row, action,
+// or behavior is changed.
+// ============================================================
+// ============================================================
+
+// The Event_Contacts tab is keyed by `event_id` — the SAME key `listEvents` /
+// `openEvent` hand to the browser (the row's event_id, or `row-N` for rows
+// without one, via eventKeyOf). One shared tab, many events, exactly like
+// Opportunity_Documents is one tab keyed by opportunity_id.
+var EVENT_CONTACTS_TAB = 'Event_Contacts';
+var EVENT_CONTACT_HEADERS = [
+  'event_id', 'event_title', 'contact_id', 'name', 'title', 'company', 'email',
+  'owner', 'status', 'icp_role', 'seniority_tier', 'ai_confidence',
+  'ai_rationale', 'source_file', 'saved_at'
+];
+
+/**
+ * getEventContactsSheet
+ * Returns the Event_Contacts sheet, creating it with the header row on first
+ * use. If an older copy exists with a shorter header, any missing columns are
+ * appended so name-based indexing always works.
+ */
+function getEventContactsSheet(ss) {
+  var sheet = ss.getSheetByName(EVENT_CONTACTS_TAB);
+  if (!sheet) {
+    sheet = ss.insertSheet(EVENT_CONTACTS_TAB);
+    sheet.getRange(1, 1, 1, EVENT_CONTACT_HEADERS.length).setValues([EVENT_CONTACT_HEADERS]);
+    return sheet;
+  }
+  // Ensure every expected header exists (future-proofing an older tab).
+  var lastCol = Math.max(1, sheet.getLastColumn());
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h || '').trim(); });
+  var missing = EVENT_CONTACT_HEADERS.filter(function (h) { return headers.indexOf(h) === -1; });
+  if (missing.length) {
+    sheet.getRange(1, headers.length + 1, 1, missing.length).setValues([missing]);
+  }
+  return sheet;
+}
+
+/**
+ * eventContactRowFor
+ * Builds one Event_Contacts row aligned to the sheet's actual header order.
+ * Accepts either the client field names (icpRole/tier/confidence/rationale) or
+ * the stored ones (icp_role/seniority_tier/ai_confidence/ai_rationale).
+ */
+function eventContactRowFor(headers, eventKey, eventTitle, fileName, stamp, c) {
+  c = c || {};
+  var map = {
+    event_id: eventKey,
+    event_title: eventTitle,
+    contact_id: String(c.id != null ? c.id : (c.contact_id != null ? c.contact_id : '')),
+    name: String(c.name == null ? '' : c.name),
+    title: String(c.title == null ? '' : c.title),
+    company: String(c.company == null ? '' : c.company),
+    email: String(c.email == null ? '' : c.email),
+    owner: String(c.owner == null ? '' : c.owner),
+    status: String(c.status == null ? '' : c.status),
+    icp_role: String(c.icp_role != null ? c.icp_role : (c.icpRole != null ? c.icpRole : '')),
+    seniority_tier: String(c.seniority_tier != null ? c.seniority_tier : (c.tier != null ? c.tier : '')),
+    ai_confidence: String(c.ai_confidence != null ? c.ai_confidence : (c.confidence != null ? c.confidence : '')),
+    ai_rationale: String(c.ai_rationale != null ? c.ai_rationale : (c.rationale != null ? c.rationale : '')),
+    source_file: String(fileName == null ? '' : fileName),
+    saved_at: stamp
+  };
+  return headers.map(function (h) {
+    return Object.prototype.hasOwnProperty.call(map, h) ? map[h] : '';
+  });
+}
+
+/**
+ * doSaveEventContacts
+ * Input payload: { action:'saveEventContacts', eventKey, eventTitle, fileName,
+ *                  contacts:[{ id, name, title, company, email, owner, status,
+ *                              icp_role, seniority_tier, confidence, rationale }] }
+ *
+ * Replace-by-event: every existing Event_Contacts row for `eventKey` is removed
+ * and the supplied list is written in its place, so the tab always mirrors the
+ * current target list for that event (re-uploads and status changes never pile
+ * up duplicates). Rows belonging to OTHER events are left untouched. As a
+ * convenience the matching Events row's `lead_count` cell is refreshed to the
+ * saved count (best-effort — never fatal).
+ *
+ * Output: { ok:true, saved:<n>, event_id:<key> }
+ */
+function doSaveEventContacts(payload) {
+  var key = String(payload.eventKey == null ? '' : payload.eventKey).trim();
+  if (!key) return jsonOut({ ok: false, code: 'bad_request', error: 'No event specified' });
+
+  var contacts = (payload.contacts && payload.contacts.length) ? payload.contacts : [];
+  // Safety cap: a single save can never write an unbounded number of rows.
+  if (contacts.length > 5000) contacts = contacts.slice(0, 5000);
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = getEventContactsSheet(ss);
+  var numCols = sheet.getLastColumn();
+  var headers = sheet.getRange(1, 1, 1, numCols).getValues()[0].map(function (h) { return String(h || '').trim(); });
+  var idIdx = headers.indexOf('event_id');
+  if (idIdx === -1) throw new Error('Event_Contacts is missing its event_id column');
+
+  // Keep every existing row that belongs to a DIFFERENT event.
+  var kept = [];
+  if (sheet.getLastRow() > 1) {
+    var existing = sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols).getValues();
+    for (var i = 0; i < existing.length; i++) {
+      var rowKey = String(existing[i][idIdx] == null ? '' : existing[i][idIdx]).trim();
+      if (rowKey === '') continue;          // drop stray blank rows
+      if (rowKey !== key) kept.push(existing[i]);
+    }
+  }
+
+  var eventTitle = String(payload.eventTitle == null ? '' : payload.eventTitle);
+  var fileName = String(payload.fileName == null ? '' : payload.fileName);
+  var stamp = new Date().toISOString();
+  var fresh = contacts.map(function (c) {
+    return eventContactRowFor(headers, key, eventTitle, fileName, stamp, c);
+  });
+
+  var all = kept.concat(fresh);
+
+  // Rewrite the whole data area in one batched write, then clear any leftover
+  // trailing rows (when the new total is shorter than what was there before).
+  var prevRows = sheet.getLastRow() - 1;
+  if (prevRows > 0) sheet.getRange(2, 1, prevRows, numCols).clearContent();
+  if (all.length) sheet.getRange(2, 1, all.length, numCols).setValues(all);
+
+  // Best-effort: keep the Events tab's lead_count in step with what we saved.
+  try { updateEventLeadCount(ss, key, fresh.length); } catch (e) { /* non-fatal */ }
+
+  return jsonOut({ ok: true, saved: fresh.length, event_id: key });
+}
+
+/**
+ * doListEventContacts
+ * Input payload: { action:'listEventContacts', eventKey }
+ * Returns every Event_Contacts row for that event as an object keyed by header.
+ * Missing tab / no rows → an empty list (never an error), so a first-time event
+ * simply opens with no contacts.
+ *
+ * Output: { ok:true, contacts:[ { event_id, name, title, company, email, owner,
+ *           status, icp_role, seniority_tier, ai_confidence, ai_rationale,
+ *           contact_id, source_file, saved_at } ] }
+ */
+function doListEventContacts(payload) {
+  var key = String(payload.eventKey == null ? '' : payload.eventKey).trim();
+  if (!key) return jsonOut({ ok: true, contacts: [] });
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(EVENT_CONTACTS_TAB);
+  if (!sheet || sheet.getLastRow() < 2) return jsonOut({ ok: true, contacts: [] });
+
+  var numCols = sheet.getLastColumn();
+  var headers = sheet.getRange(1, 1, 1, numCols).getValues()[0].map(function (h) { return String(h || '').trim(); });
+  var idIdx = headers.indexOf('event_id');
+  if (idIdx === -1) return jsonOut({ ok: true, contacts: [] });
+
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols).getValues();
+  var out = [];
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][idIdx] == null ? '' : data[i][idIdx]).trim() !== key) continue;
+    var obj = {};
+    for (var j = 0; j < headers.length; j++) {
+      var h = headers[j];
+      if (!h) continue;
+      var v = data[i][j];
+      obj[h] = (v instanceof Date) ? v.toISOString() : v;
+    }
+    out.push(obj);
+  }
+  return jsonOut({ ok: true, contacts: out });
+}
+
+/**
+ * updateEventLeadCount
+ * Writes `count` into the `lead_count` cell of the Events row whose key matches
+ * `eventKey`. Uses the shared readEventRows()/eventKeyOf() so the join is byte-
+ * identical to how the picker addressed the event. No-op when the column or the
+ * row can't be found.
+ */
+function updateEventLeadCount(ss, eventKey, count) {
+  var sheet = ss.getSheetByName('Events');
+  if (!sheet || sheet.getLastRow() < 2) return;
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var lcIdx = -1;
+  for (var j = 0; j < headers.length; j++) {
+    if (String(headers[j] || '').trim() === 'lead_count') { lcIdx = j; break; }
+  }
+  if (lcIdx === -1) return;
+
+  var rows = readEventRows();
+  for (var i = 0; i < rows.length; i++) {
+    if (eventKeyOf(rows[i]) === eventKey) {
+      sheet.getRange(rows[i]._row, lcIdx + 1).setValue(count);
+      return;
+    }
+  }
+}
