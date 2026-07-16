@@ -25,6 +25,7 @@
   --ring:0 0 0 3px rgba(47,107,255,.22);
 }
 *{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
 body{font-family:var(--font);color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased;line-height:1.5}
 button{font-family:inherit}
 ::selection{background:rgba(47,107,255,.16)}
@@ -290,17 +291,16 @@ tbody tr:hover{background:var(--surface-hover)}
 .modal__body{overflow:auto;padding:8px 12px 12px;flex:1}
 .modal__foot{padding:12px 22px;border-top:1px solid var(--border-light);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 .modal__foot .hint{font-size:12px;color:var(--muted)}
-.evgroup{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:14px 10px 6px}
-.evrow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:1px solid transparent;border-radius:var(--r-md);padding:11px 12px;cursor:pointer;transition:all .12s;font-family:var(--font)}
-.evrow:hover{background:var(--surface-hover);border-color:var(--border)}
-.evrow__main{flex:1;min-width:0}
-.evrow__title{font-weight:600;font-size:14px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.evrow__meta{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.evrow__status{font-size:11px;font-weight:600;padding:3px 10px;border-radius:var(--r-full);white-space:nowrap;flex-shrink:0}
-.st-live{background:#E6F5F3;color:var(--teal)}
-.st-upcoming{background:#EAF0FF;color:var(--primary-dark)}
-.st-past{background:#EEF1F7;color:#5B6577}
-.st-cancelled{background:#FDECEE;color:#C4414E}
+/* gate form: dropdown + password + open button */
+.gate{padding:14px 10px 10px;display:flex;flex-direction:column;gap:14px}
+.gate__label{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;display:block}
+.gate select,.gate input[type=password]{width:100%;font-family:var(--font);font-size:14px;color:var(--ink);background:#fff;border:1px solid var(--border);border-radius:var(--r-md);padding:11px 13px}
+.gate select:focus,.gate input[type=password]:focus{outline:none;border-color:var(--primary);box-shadow:var(--ring)}
+.gate__meta{font-size:12.5px;color:var(--muted);margin-top:7px;min-height:1em}
+.gate__err{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:#C4414E;background:#FDECEE;border:1px solid #F3B6BD;border-radius:var(--r-md);padding:10px 13px}
+.gate__err svg{width:15px;height:15px;flex-shrink:0}
+.gate__actions{display:flex;justify-content:flex-end;padding-top:2px}
+.gate__actions .btn[disabled]{opacity:.55;cursor:default}
 .modal-spin{display:flex;flex-direction:column;align-items:center;gap:12px;padding:44px 16px;color:var(--muted);font-size:13.5px}
 .modal-spin .spin{width:22px;height:22px;border-width:3px;border-color:rgba(47,107,255,.25);border-top-color:var(--primary)}
 .modal .empty{padding:36px 16px}
@@ -333,7 +333,9 @@ tbody tr:hover{background:var(--surface-hover)}
   <button class="btn"><svg viewBox="0 0 20 20" fill="none"><circle cx="6" cy="10" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="14" cy="5" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="14" cy="15" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 9l4-2.5M8 11l4 2.5" stroke="currentColor" stroke-width="1.5"/></svg>Share</button>
 </div>
 
-<div class="wrap">
+<!-- The workspace stays hidden until an event has been selected (and its
+     password verified, if it has one) in the gate below. -->
+<div class="wrap" id="workspace" hidden>
   <!-- ===== Event header (rendered from the selected event) ===== -->
   <div class="ehead" id="ehead"></div>
 
@@ -350,27 +352,30 @@ tbody tr:hover{background:var(--surface-hover)}
 
   <div class="note">
     <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/><path d="M10 9v4.5M10 6.5v.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-    Event details sync live from the Events tab of the Partner Portal Google Sheet — use “Change event” to switch. Contacts and playbook progress are demo data; replace the target list to import your own. Nothing is saved back to the sheet.
+    Event details sync live from the Events tab of the Partner Portal Google Sheet — use “Change event” to switch (the new event’s password is required if it has one). Contacts and playbook progress are demo data; replace the target list to import your own. Nothing is saved back to the sheet.
   </div>
 </div>
 
 <input type="file" id="file-input" accept=".xlsx,.xls,.csv" hidden>
 <div id="toast"></div>
 
-<!-- ===== Event picker (synced from the Events tab) ===== -->
+<!-- ===== Event gate (synced from the Events tab) =====
+     Mandatory on open: pick an event from the dropdown, enter its password if
+     it has one, and only then does the workspace open — showing only that
+     event. Completed events are filtered out by the backend and never appear. -->
 <div class="modal-backdrop" id="event-modal" hidden>
-  <div class="modal" role="dialog" aria-modal="true" aria-label="Select an event">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Select your event">
     <div class="modal__head">
       <div class="modal__title">
-        <svg viewBox="0 0 20 20" fill="none"><path d="M16.5 10a6.5 6.5 0 11-1.9-4.6M16.5 2.5v3h-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Select an event
+        <svg viewBox="0 0 20 20" fill="none"><rect x="3" y="4" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M3 9h14M7 2v4M13 2v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        Select your event
       </div>
-      <div class="modal__sub">Synced live from the Events tab of the Partner Portal Google Sheet. Picking one fills the workspace with that event’s details.</div>
+      <div class="modal__sub">Events sync live from the Events tab of the Partner Portal Google Sheet. Password-protected events (🔒) require the event password before their details open.</div>
     </div>
     <div class="modal__body" id="event-modal-body"></div>
     <div class="modal__foot">
-      <span class="hint">Only the event details load — contacts stay as they are.</span>
-      <button class="btn js-modal-skip">Not now</button>
+      <span class="hint">Only that event’s details load — contacts stay as they are.</span>
+      <button class="btn js-modal-skip" id="event-modal-cancel" hidden>Cancel</button>
     </div>
   </div>
 </div>
@@ -381,9 +386,10 @@ tbody tr:hover{background:var(--surface-hover)}
 
   /* ================= backend config =================
      CONFIG.webAppUrl points at the Partner Portal web script and powers two
-     things: (1) the on-open event sync — a `listEvents` call that loads the
-     Events tab from the Google Sheet so the user can pick an event and have
-     its details prepopulate the workspace; (2) AI lead categorization below.
+     things: (1) the on-open event gate — `listEvents` fills the mandatory
+     event dropdown (completed events excluded, passwords never included) and
+     `openEvent` verifies the event password server-side before releasing that
+     event's details into the workspace; (2) AI lead categorization below.
      The "Analyze with AI" button sends the current contact list to the Partner
      Portal web script (Google Apps Script), which asks the SaaS demand-gen
      expert persona ("Event Lead Categorizer", stored in the Custom_Prompts tab)
@@ -1216,16 +1222,40 @@ tbody tr:hover{background:var(--surface-hover)}
     nextBatch();
   }
 
-  /* ================= EVENT SYNC (Google Sheets) =================
-     On open the page calls the web script's `listEvents` action, which returns
-     the Events tab verbatim, and asks the user to select an event before
-     anything else. The chosen row prepopulates the workspace exactly as the
+  /* ================= EVENT GATE (Google Sheets) =================
+     The gate is the first — and mandatory — step. On open the page calls the
+     web script's `listEvents` action, which returns only the open (never
+     completed) rows of the Events tab as a minimal picker payload: title,
+     dates, type, location and a has_password flag. The user picks an event
+     from the dropdown; if that event has a password in the sheet they must
+     enter it. Only then does `openEvent` verify the password SERVER-SIDE and
+     release the full row, which prepopulates the workspace exactly as the
      sheet has it — title, type, status, dates, location and description are
      copied 1:1, and the playbook timeline is recomputed from the event's real
-     dates. Nothing is inferred: rows without a parseable date simply render
-     without one, and unknown event types are shown verbatim. If the backend is
-     unreachable the modal offers a retry and the demo view keeps working. */
-  var sheetEvents=[];
+     dates. The workspace stays hidden until that first unlock, so the page
+     only ever shows the selected event's details. Passwords never travel to
+     the browser. If the backend is unreachable the gate offers a retry. */
+  var sheetEvents=[];   // minimal picker entries from listEvents
+  var unlocked=false;   // true after the first successful openEvent
+  var gateBusy=false;
+  function normalizePickerEvent(raw){
+    if(!raw) return null;
+    var title=String(raw.title||'').trim();
+    var key=String(raw.key||'').trim();
+    if(!title||!key) return null;
+    var start=parseSheetDate(raw.event_date);
+    var end=parseSheetDate(raw.end_date)||start;
+    if(start&&end&&end<start) end=start;
+    return {
+      key:key, title:title,
+      type:String(raw.event_type||'').trim(),
+      status:String(raw.status||'').trim(),
+      start:start, end:end,
+      location:String(raw.location||'').trim(),
+      hasPassword:!!raw.has_password
+    };
+  }
+  // The full row released by openEvent after the password check.
   function normalizeEvent(raw){
     if(!raw) return null;
     var title=String(raw.title||'').trim();
@@ -1263,8 +1293,8 @@ tbody tr:hover{background:var(--surface-hover)}
     modalBody('<div class="modal-spin"><span class="spin"></span>Syncing events from the Google Sheet…</div>');
     aiFetch({action:'listEvents'}).then(function(res){
       if(res&&res.ok&&res.events&&res.events.map){
-        sheetEvents=res.events.map(normalizeEvent).filter(Boolean);
-        renderEventList();
+        sheetEvents=res.events.map(normalizePickerEvent).filter(Boolean);
+        renderGate();
       } else {
         modalBody(syncErrHTML(res&&res.error));
       }
@@ -1273,33 +1303,107 @@ tbody tr:hover{background:var(--surface-hover)}
   function syncErrHTML(err){
     return '<div class="empty">Could not load events from the Google Sheet'
       +(err?(' — '+esc(String(err))):'')
-      +'.<br>Make sure the web script is redeployed with the <b>listEvents</b> action.'
+      +'.<br>Make sure the web script is redeployed with the <b>listEvents</b> and <b>openEvent</b> actions.'
       +'<br><br><button class="btn js-modal-retry">Try again</button></div>';
   }
-  function renderEventList(){
-    if(!sheetEvents.length){modalBody('<div class="empty">No events found in the Events tab of the sheet.</div>');return;}
+  function renderGate(){
+    if(!sheetEvents.length){
+      modalBody('<div class="empty">No open events found in the Events tab of the sheet.<br><br><button class="btn js-modal-retry">Refresh</button></div>');
+      return;
+    }
     var groups={live:[],upcoming:[],past:[],cancelled:[]};
     sheetEvents.forEach(function(e,i){e._idx=i;groups[groupOf(e)].push(e);});
     function ts(e){return e.start?e.start.getTime():0;}
     function asc(a,b){return ts(a)-ts(b);} function desc(a,b){return ts(b)-ts(a);}
     groups.live.sort(asc);groups.upcoming.sort(asc);groups.past.sort(desc);groups.cancelled.sort(desc);
+    var LABELS={live:'Happening now',upcoming:'Upcoming',past:'Past',cancelled:'Cancelled'};
+    var opts='<option value="">Select an event…</option>';
+    ['live','upcoming','past','cancelled'].forEach(function(g){
+      if(!groups[g].length) return;
+      opts+='<optgroup label="'+LABELS[g]+'">'+groups[g].map(function(e){
+        var meta=[e.type,fmtRange(e.start,e.end)].filter(Boolean).join(' · ');
+        return '<option value="'+e._idx+'">'+esc(e.title+(meta?' — '+meta:'')+(e.hasPassword?' 🔒':''))+'</option>';
+      }).join('')+'</optgroup>';
+    });
     modalBody(
-      evGroupHTML('Happening now',groups.live,'st-live')
-      +evGroupHTML('Upcoming',groups.upcoming,'st-upcoming')
-      +evGroupHTML('Past',groups.past,'st-past')
-      +evGroupHTML('Cancelled',groups.cancelled,'st-cancelled')
+      '<div class="gate">'
+      +'<div><label class="gate__label" for="gate-select">Event</label>'
+      +'<select id="gate-select">'+opts+'</select>'
+      +'<div class="gate__meta" id="gate-meta"></div></div>'
+      +'<div id="gate-pw-row" hidden><label class="gate__label" for="gate-pw">Event password</label>'
+      +'<input type="password" id="gate-pw" placeholder="Enter the password for this event" autocomplete="off"></div>'
+      +'<div class="gate__err" id="gate-err" hidden></div>'
+      +'<div class="gate__actions"><button class="btn btn--primary js-gate-open" disabled>Open event</button></div>'
+      +'</div>'
     );
   }
-  function evGroupHTML(label,arr,cls){
-    if(!arr.length) return '';
-    return '<div class="evgroup">'+label+'</div>'+arr.map(function(e){
-      var meta=[e.type,fmtRange(e.start,e.end),e.location,(e.leadCount!=null?e.leadCount+' leads':null)]
-        .filter(Boolean).join(' · ');
-      return '<button class="evrow" data-idx="'+e._idx+'">'
-        +'<div class="evrow__main"><div class="evrow__title">'+esc(e.title)+'</div>'
-        +'<div class="evrow__meta">'+esc(meta)+'</div></div>'
-        +'<span class="evrow__status '+cls+'">'+esc(e.status||label)+'</span></button>';
-    }).join('');
+  function gateSelected(){
+    var s=el('gate-select');
+    if(!s||s.value==='') return null;
+    return sheetEvents[Number(s.value)]||null;
+  }
+  function gateError(msg){
+    var e=el('gate-err'); if(!e) return;
+    if(msg){
+      e.innerHTML='<svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.6"/><path d="M10 6.5v4M10 13.5v.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>'+esc(msg);
+      e.hidden=false;
+    } else e.hidden=true;
+  }
+  function updateGateUI(){
+    var ev=gateSelected();
+    var pwRow=el('gate-pw-row'),btn=document.querySelector('.js-gate-open'),meta=el('gate-meta');
+    if(pwRow){
+      pwRow.hidden=!(ev&&ev.hasPassword);
+      var p=el('gate-pw');
+      if(p){p.value=''; if(!pwRow.hidden) p.focus();}
+    }
+    if(btn) btn.disabled=!ev||gateBusy;
+    if(meta) meta.textContent=ev?[ev.type,fmtRange(ev.start,ev.end),ev.location,(ev.hasPassword?'Password protected':null)].filter(Boolean).join(' · '):'';
+    gateError('');
+  }
+  function gateFail(msg){
+    var btn=document.querySelector('.js-gate-open');
+    if(btn){btn.disabled=!gateSelected();btn.innerHTML='Open event';}
+    gateError(msg);
+  }
+  function openSelectedEvent(){
+    if(gateBusy) return;
+    var ev=gateSelected(); if(!ev) return;
+    var pw='';
+    if(ev.hasPassword){
+      var p=el('gate-pw');
+      pw=p?p.value.trim():'';
+      if(!pw){gateError('This event is password protected — enter its password to open it.');if(p)p.focus();return;}
+    }
+    gateBusy=true;
+    var btn=document.querySelector('.js-gate-open');
+    if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>Opening…';}
+    aiFetch({action:'openEvent',eventKey:ev.key,password:pw}).then(function(res){
+      gateBusy=false;
+      if(res&&res.ok&&res.event){
+        var full=normalizeEvent(res.event);
+        if(!full){gateFail('The event could not be loaded — try again.');return;}
+        hideEventModal();
+        applyEvent(full);
+        if(!unlocked){
+          unlocked=true;
+          el('workspace').hidden=false;
+          el('event-modal-cancel').hidden=false;
+        }
+        return;
+      }
+      // The list is stale (row removed or since completed) — refresh the gate.
+      if(res&&(res.code==='not_found'||res.code==='completed')){
+        toast(res.error||'That event is no longer available');
+        syncEvents();
+        return;
+      }
+      gateFail((res&&res.error)||'Could not open the event — try again.');
+      if(res&&res.code==='bad_password'){var pi=el('gate-pw');if(pi){pi.focus();pi.select();}}
+    }).catch(function(){
+      gateBusy=false;
+      gateFail('Could not reach the Google Sheet — check your connection and try again.');
+    });
   }
   function applyEvent(ev){
     state.event=ev;
@@ -1309,12 +1413,22 @@ tbody tr:hover{background:var(--surface-hover)}
     toast('Loaded “'+ev.title+'” from the Events sheet');
   }
   el('event-modal').addEventListener('click',function(e){
-    if(e.target===el('event-modal')||e.target.closest('.js-modal-skip')){hideEventModal();return;}
+    if(e.target===el('event-modal')||e.target.closest('.js-modal-skip')){
+      if(unlocked) hideEventModal(); // before the first unlock the gate cannot be dismissed
+      return;
+    }
     if(e.target.closest('.js-modal-retry')){syncEvents();return;}
-    var row=e.target.closest('.evrow');
-    if(row){
-      var ev=sheetEvents[Number(row.getAttribute('data-idx'))];
-      if(ev){hideEventModal();applyEvent(ev);}
+    if(e.target.closest('.js-gate-open')){openSelectedEvent();return;}
+  });
+  el('event-modal').addEventListener('change',function(e){
+    if(e.target.id==='gate-select') updateGateUI();
+  });
+  el('event-modal').addEventListener('input',function(e){
+    if(e.target.id==='gate-pw') gateError('');
+  });
+  el('event-modal').addEventListener('keydown',function(e){
+    if(e.key==='Enter'&&(e.target.id==='gate-pw'||e.target.id==='gate-select')){
+      e.preventDefault();openSelectedEvent();
     }
   });
 
@@ -1323,8 +1437,16 @@ tbody tr:hover{background:var(--surface-hover)}
   renderOverview();
   renderContacts();
   renderPlaybook();
-  // First thing on open: sync the Events tab and ask the user to pick an event.
-  syncEvents();
+  if(aiConfigured()){
+    // First and mandatory step on open: pick an event from the dropdown (and
+    // enter its password if it has one). The workspace stays hidden until then.
+    syncEvents();
+  } else {
+    // No backend configured — nothing to gate; open the demo workspace directly.
+    unlocked=true;
+    el('workspace').hidden=false;
+    el('event-modal-cancel').hidden=false;
+  }
 })();
 </script>
 </body>
