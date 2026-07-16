@@ -69,8 +69,89 @@ a retry.
 > It is access gating for a shared workspace link, not hardened auth — anyone
 > with edit access to the sheet can read the `event_password` column.
 
-Nothing is written back to the sheet by this feature — both actions are
-read-only.
+The gate itself is read-only — `listEvents` and `openEvent` never write. The
+contact list you upload for the event, however, **is** saved back to the sheet;
+that is the next section.
+
+---
+
+# Event Contacts — saving the target list back to the sheet
+
+## The methodology (what happens, and why)
+
+The playbook is **event-first and stateless about contacts**. On open it holds
+**no contact data of its own** — only what it can correlate from the event's own
+row in the `Events` tab (title, type, status, dates, location, description).
+The demo list you see before an event is opened is cleared the moment a real
+event is selected.
+
+Contacts enter the playbook **one event at a time**, and they are **persisted
+per event** so they can be referenced later:
+
+1. **Open an event** → the workspace loads with only *that* event's saved
+   contacts (via `listEventContacts`). A brand-new event simply opens empty.
+2. **Upload a CSV/Excel target list** → it's parsed, AI-categorized (buyer role,
+   seniority, cleaned company), and **automatically saved** to the sheet.
+3. **Saved to a dedicated `Event_Contacts` tab**, keyed by the event, via
+   `saveEventContacts`. A **"Save to sheet"** button also lets you re-save on
+   demand — e.g. after toggling *Meeting booked* / *Not interested*.
+4. **Reopen the event any time** (this session or a future one) → the saved
+   contacts load straight back in.
+
+### Where the contacts are stored
+
+A new tab, **`Event_Contacts`**, is **created automatically on first save** —
+exactly the way the existing `Opportunity_Documents` tab is created on the first
+file upload. You never have to add it by hand, and nothing else in the workbook
+is touched. Its columns:
+
+| Column | Meaning |
+| --- | --- |
+| `event_id` | **Join key** — the event's `event_id` (or `row-N` for a row without one). The *same* key the picker/`openEvent` already use, so contacts always attach to the right event. |
+| `event_title` | The event's title, for human readability in the sheet. |
+| `contact_id` | Stable id for the contact within the event. |
+| `name` · `title` · `company` · `email` · `owner` | The contact's mapped fields. |
+| `status` | `none` · `meeting` · `declined` (the outreach status you toggle in the UI). |
+| `icp_role` | AI buyer role: Decision Maker · Champion · Influencer · Unknown. |
+| `seniority_tier` | AI seniority: C-Suite · VP · Director · Manager · Individual. |
+| `ai_confidence` · `ai_rationale` | The AI's confidence and one-line reasoning. |
+| `source_file` | The uploaded file the list came from. |
+| `saved_at` | ISO timestamp of the save. |
+
+### Save semantics — **replace, keyed by event**
+
+Saving an event's contacts **replaces every existing `Event_Contacts` row for
+that event** with the current list, then writes it in one batched update. Rows
+belonging to **other** events are never touched. This means:
+
+- Re-uploading or re-saving the same event **never accumulates duplicates** —
+  the tab always mirrors the current target list for that event.
+- Status changes and re-categorizations are captured on the next save.
+- The **`lead_count`** cell of the matching `Events` row is refreshed to the
+  saved count as a convenience (best-effort; a failure here never blocks the
+  save, and no other Events column is modified).
+
+### The two new actions
+
+- **`saveEventContacts`** — `{ eventKey, eventTitle, fileName, contacts:[…] }` →
+  writes/replaces that event's rows. Returns `{ ok, saved, event_id }`.
+- **`listEventContacts`** — `{ eventKey }` → returns that event's saved contacts
+  as row objects (empty list, never an error, when there are none). Returns
+  `{ ok, contacts:[…] }`.
+
+Both live in `Code.gs` below the fenced *EVENT CONTACTS* section and are purely
+additive — every original action is unchanged.
+
+> ⚠️ **Redeploy required:** like `listEvents`/`openEvent`, these actions only
+> work once you update the Apps Script project with this repo's `Code.gs` and
+> publish a **new version** of the existing web-app deployment (Section 2
+> below). Until then, uploading still categorizes contacts locally but the save
+> will report *"Unknown action"* and the list won't persist.
+
+> 🔐 **Note:** contacts are written with the deployment's *Execute as: Me*
+> identity, so anyone using the shared workspace link can save/read the target
+> list for any event they can open. This is the same trust model as the rest of
+> the workspace — it's a shared partner tool, not per-user auth.
 
 ---
 
@@ -139,10 +220,10 @@ holding your "Randy" personas, and the Apps Script already calls Claude with the
 
 1. Open the Apps Script project bound to the sheet (**Extensions → Apps Script**).
 2. Replace the script with **`apps-script/Code.gs`** from this repo. It is your
-   existing script **unchanged**, plus the new `categorizeLeads`, `listEvents`
-   and `openEvent` actions — all six original actions (`uploadFile`, `listFiles`,
-   `deleteFile`, `analyzeDocument`, `updateDescription`, `getConfig`) are
-   byte-for-byte the same.
+   existing script **unchanged**, plus the new `categorizeLeads`, `listEvents`,
+   `openEvent`, `saveEventContacts` and `listEventContacts` actions — all six
+   original actions (`uploadFile`, `listFiles`, `deleteFile`, `analyzeDocument`,
+   `updateDescription`, `getConfig`) are byte-for-byte the same.
 3. Confirm `ANTHROPIC_API_KEY` still exists under
    **Project Settings → Script properties**.
 
@@ -288,8 +369,11 @@ safe. Unrecognized values are ignored rather than applied.
 
 ## Safety notes
 
-- **Non-destructive.** No existing tab, row, action, or UI behavior is changed.
-  The AI only writes to in-memory fields on the preview page (nothing is saved).
+- **Non-destructive to existing data.** No existing tab, row, action, or UI
+  behavior is changed. The AI classification itself writes only to in-memory
+  fields on the page; persistence is handled separately by the *Event Contacts*
+  feature above, which writes only to the new `Event_Contacts` tab (plus the
+  `lead_count` cell of the matching `Events` row).
 - **Graceful failure.** No URL / wrong URL / network error / non-`ok` response →
   a toast, and the app continues on the local heuristic.
 - **Key stays server-side.** Classification happens inside Apps Script; the page
