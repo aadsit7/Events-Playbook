@@ -395,7 +395,8 @@ tbody tr:hover{background:var(--surface-hover)}
     // Apps Script Web App /exec URL. Deploy with: Execute as = Me, Who has access = Anyone.
     webAppUrl:'https://script.google.com/macros/s/AKfycbwFURmpvnwu6Ge5Pyt2zJVMwwV4jcRIR8Q9BmUwQJyRM3l5Aq9PsFjdA-ysoDL1jQeK/exec'
   };
-  var AI_BATCH=20, AI_MAX=400;      // leads per request, and a safety cap per run
+  var AI_BATCH=20;                  // leads per request — every imported row is analyzed
+  var AI_RETRIES=1;                 // extra attempts per batch before its rows count as failed
   var aiBusy=false, aiProgress=0, aiTotal=0;
   var aiRun=0;                      // run token: a new upload supersedes any in-flight analysis
   function aiConfigured(){return CONFIG.webAppUrl && CONFIG.webAppUrl.indexOf('PASTE')<0 && CONFIG.webAppUrl.indexOf('/exec')>0;}
@@ -950,9 +951,9 @@ tbody tr:hover{background:var(--surface-hover)}
       try{
         if(typeof XLSX!=='undefined'){
           var wb=XLSX.read(new Uint8Array(ev.target.result),{type:'array'});
-          rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
+          rows=bestSheetRows(wb);
         } else if(/\.csv$/i.test(file.name)){
-          rows=parseCSV(new TextDecoder().decode(new Uint8Array(ev.target.result)));
+          rows=rowsFromGrid(parseCSV(new TextDecoder().decode(new Uint8Array(ev.target.result))));
         }
       }catch(err){rows=null;}
       if(rows && rows.length){
@@ -976,20 +977,95 @@ tbody tr:hover{background:var(--surface-hover)}
     reader.readAsArrayBuffer(file);
   });
 
-  function findKey(keys,cands){
-    var lower={}; keys.forEach(function(k){lower[k.toLowerCase().trim()]=k;});
-    for(var i=0;i<cands.length;i++){ for(var lk in lower){ if(lk.indexOf(cands[i])>=0) return lower[lk]; } }
+  // Header tokens used to locate the real header row inside a sheet — lead
+  // exports routinely carry a report title, export timestamp or blank rows
+  // above the actual column headers.
+  var HEADER_TOKENS=['name','first','last','email','e-mail','company','account','organization','organisation','title','job','role','position','owner','status','stage','phone','department','contact'];
+  function headerScore(row){
+    var hits=0,filled=0;
+    for(var i=0;i<row.length;i++){
+      var v=String(row[i]==null?'':row[i]).trim().toLowerCase();
+      if(!v) continue; filled++;
+      for(var t=0;t<HEADER_TOKENS.length;t++){ if(v.indexOf(HEADER_TOKENS[t])>=0){hits++;break;} }
+    }
+    return filled>=2?hits:0;
+  }
+  // Turns a raw 2-D grid into row objects: finds the best header row within the
+  // first 10 rows, names blank headers "Column N", dedupes repeated headers so
+  // no column overwrites another, and drops fully empty rows. Every cell of
+  // every remaining row is kept.
+  function rowsFromGrid(grid){
+    if(!grid||!grid.length) return null;
+    var hdrIdx=-1,best=0;
+    for(var i=0;i<Math.min(grid.length,10);i++){
+      var s=headerScore(grid[i]);
+      if(s>best){best=s;hdrIdx=i;}
+    }
+    if(hdrIdx<0){ // no recognizable header — use the first row with 2+ filled cells
+      for(var j=0;j<grid.length;j++){
+        var f=0; grid[j].forEach(function(c){if(String(c==null?'':c).trim())f++;});
+        if(f>=2){hdrIdx=j;break;}
+      }
+    }
+    if(hdrIdx<0) return null;
+    var seen={};
+    var headers=grid[hdrIdx].map(function(h,i){
+      h=String(h==null?'':h).trim()||('Column '+(i+1));
+      if(seen[h]){seen[h]++;h=h+' ('+seen[h]+')';} else seen[h]=1;
+      return h;
+    });
+    var out=[];
+    for(var r=hdrIdx+1;r<grid.length;r++){
+      var cells=grid[r]||[],o={},any=false;
+      for(var c=0;c<headers.length;c++){
+        var v=cells[c]==null?'':String(cells[c]).trim();
+        if(v) any=true;
+        o[headers[c]]=v;
+      }
+      if(any) out.push(o);
+    }
+    return out.length?out:null;
+  }
+  // Reads EVERY worksheet in the workbook and keeps the one with the most
+  // usable data rows, so a cover/instructions tab in front of the data can
+  // never hide the real lead list.
+  function bestSheetRows(wb){
+    var bestRows=null;
+    for(var i=0;i<wb.SheetNames.length;i++){
+      var ws=wb.Sheets[wb.SheetNames[i]]; if(!ws) continue;
+      var rows=null;
+      try{ rows=rowsFromGrid(XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false})); }catch(e){}
+      if(rows&&(!bestRows||rows.length>bestRows.length)) bestRows=rows;
+    }
+    return bestRows;
+  }
+  // Column matcher: exact header match wins before substring match, and an
+  // exclusion list stops e.g. "First Name" from being taken as the full-name
+  // column (its substring contains "name") or "Buyer Role" as the job title.
+  function findKey(keys,cands,exclude){
+    var norm=keys.map(function(k){return {key:k,l:k.toLowerCase().trim()};});
+    function skip(l){ if(!exclude) return false; for(var x=0;x<exclude.length;x++){ if(l.indexOf(exclude[x])>=0) return true; } return false; }
+    for(var pass=0;pass<2;pass++){
+      for(var i=0;i<cands.length;i++){
+        for(var j=0;j<norm.length;j++){
+          if(skip(norm[j].l)) continue;
+          if(pass===0 ? norm[j].l===cands[i] : norm[j].l.indexOf(cands[i])>=0) return norm[j].key;
+        }
+      }
+    }
     return null;
   }
   function mapRows(rows){
     var keys=Object.keys(rows[0]||{});
-    var kName=findKey(keys,['full name','name','contact']);
-    var kFirst=findKey(keys,['first']),kLast=findKey(keys,['last']);
-    var kCo=findKey(keys,['company','account','organization','organisation']);
-    var kTitle=findKey(keys,['title','job','role','position']);
+    var kFirst=findKey(keys,['first name','first']);
+    var kLast=findKey(keys,['last name','surname','last']);
+    var kName=findKey(keys,['full name','name','contact'],['first','last','company','account','organi','owner','email','user','file','domain','id']);
+    var kCo=findKey(keys,['company','account','organization','organisation','employer']);
+    var kTitle=findKey(keys,['job title','title','job','position','role'],['buyer','icp']);
     var kEmail=findKey(keys,['email','e-mail']);
-    var kOwner=findKey(keys,['owner','rep','assigned']);
+    var kOwner=findKey(keys,['owner','assigned','rep'],['report']);
     var kStatus=findKey(keys,['status','stage']);
+    var used={};[kName,kFirst,kLast,kCo,kTitle,kEmail,kOwner,kStatus].forEach(function(k){if(k)used[k]=1;});
     return rows.map(function(r,i){
       var name=(kName?r[kName]:'') || [kFirst?r[kFirst]:'',kLast?r[kLast]:''].join(' ').trim() || 'Contact '+(i+1);
       var co=(kCo?r[kCo]:'')||'—';
@@ -998,19 +1074,43 @@ tbody tr:hover{background:var(--surface-hover)}
       var title=(kTitle?String(r[kTitle]):'')||'—';
       var st='none'; if(kStatus){var sv=String(r[kStatus]).toLowerCase();
         if(sv.indexOf('not interest')>=0||sv.indexOf('declin')>=0||sv.indexOf('lost')>=0)st='declined'; else if(sv.indexOf('meet')>=0)st='meeting';}
+      // Every column that isn't mapped above rides along in `extras`, so the
+      // AI can weigh the whole row (Department, Job Level, Function, …), not
+      // just the four fields the table displays.
+      var extras={};
+      keys.forEach(function(k){
+        if(used[k]) return;
+        var v=r[k]; if(v==null) return;
+        v=String(v).trim(); if(!v) return;
+        extras[k]=v.length>200?v.slice(0,200):v;
+      });
       return {id:'u'+i,name:String(name).trim(),title:title,tier:tierFromTitle(title),
         company:String(co).trim(),email:(kEmail?String(r[kEmail]):'')||'',
-        owner:oc?oc.name:owner,ownerColor:oc?oc.color:'#8A93A8',status:st};
+        owner:oc?oc.name:owner,ownerColor:oc?oc.color:'#8A93A8',status:st,extras:extras};
     });
   }
+  // Full CSV parser (returns a 2-D grid). Unlike a line-split, this handles
+  // quoted fields that contain commas AND newlines — common in exported
+  // notes/address columns — so no row is ever split in half or lost.
   function parseCSV(text){
-    var lines=text.split(/\r?\n/).filter(function(l){return l.trim().length;});
-    if(!lines.length) return [];
-    function split(line){var out=[],cur='',q=false;for(var i=0;i<line.length;i++){var ch=line[i];
-      if(ch==='"'){if(q&&line[i+1]==='"'){cur+='"';i++;}else q=!q;}
-      else if(ch===','&&!q){out.push(cur);cur='';}else cur+=ch;}out.push(cur);return out;}
-    var headers=split(lines[0]).map(function(h){return h.trim();});
-    return lines.slice(1).map(function(l){var cells=split(l),o={};headers.forEach(function(h,i){o[h]=(cells[i]||'').trim();});return o;});
+    var rows=[],row=[],cur='',q=false;
+    text=String(text||'').replace(/^\uFEFF/,'');
+    for(var i=0;i<text.length;i++){
+      var ch=text[i];
+      if(q){
+        if(ch==='"'){ if(text[i+1]==='"'){cur+='"';i++;} else q=false; }
+        else cur+=ch;
+      }
+      else if(ch==='"') q=true;
+      else if(ch===','){ row.push(cur);cur=''; }
+      else if(ch==='\n'||ch==='\r'){
+        if(ch==='\r'&&text[i+1]==='\n') i++;
+        row.push(cur);cur='';rows.push(row);row=[];
+      }
+      else cur+=ch;
+    }
+    if(cur!==''||row.length){row.push(cur);rows.push(row);}
+    return rows;
   }
   function downloadTemplate(){
     var csv='Full Name,Job Title,Company,Email,Owner,Status\nJane Doe,IT Director,Acme Corp,jane.doe@acme.com,Recast,Not contacted\n';
@@ -1073,20 +1173,33 @@ tbody tr:hover{background:var(--surface-hover)}
     if(aiBusy && !auto) return;       // ignore manual re-clicks while a run is in flight
     if(!aiConfigured()){ if(!auto) toast('Set CONFIG.webAppUrl to your Apps Script Web App URL to enable AI'); return; }
     var myRun=++aiRun;                // this run now owns the results; older runs stop writing
-    var targets=state.contacts.slice(0,AI_MAX);
-    if(state.contacts.length>AI_MAX) toast('Analyzing the first '+AI_MAX+' of '+state.contacts.length+' contacts');
+    var targets=state.contacts;       // EVERY imported row is analyzed — no cap
     aiBusy=true; aiProgress=0; aiTotal=targets.length; rerenderData();
     var idx=0, done=0, failed=0;
+    // One batch, with retries: a transient network/script hiccup no longer
+    // silently drops those rows from the analysis.
+    function sendBatch(slice,attempt){
+      var leads=slice.map(function(c){
+        var l={index:c.id,name:c.name,company:c.company,title:c.title,email:c.email};
+        if(c.extras&&Object.keys(c.extras).length) l.extra=c.extras;
+        return l;
+      });
+      return aiFetch({action:'categorizeLeads', leads:leads}).then(function(res){
+        if(myRun!==aiRun) return;     // stale response — never write onto a newer list
+        if(res && res.ok && res.results && res.results.length){ applyAIResults(res.results); done+=slice.length; }
+        else if(attempt<AI_RETRIES){ return sendBatch(slice,attempt+1); }
+        else { failed+=slice.length; }
+      }).catch(function(){
+        if(myRun!==aiRun) return;
+        if(attempt<AI_RETRIES) return sendBatch(slice,attempt+1);
+        failed+=slice.length;
+      });
+    }
     function nextBatch(){
       if(myRun!==aiRun) return;       // superseded by a newer upload — stop cleanly
       if(idx>=targets.length){ finish(); return; }
       var slice=targets.slice(idx, idx+AI_BATCH);
-      var leads=slice.map(function(c){return {index:c.id,name:c.name,company:c.company,title:c.title,email:c.email};});
-      aiFetch({action:'categorizeLeads', leads:leads}).then(function(res){
-        if(myRun!==aiRun) return;     // stale response — never write onto a newer list
-        if(res && res.ok && res.results && res.results.length){ applyAIResults(res.results); done+=slice.length; }
-        else { failed+=slice.length; }
-      }).catch(function(){ if(myRun===aiRun) failed+=slice.length; }).then(function(){
+      sendBatch(slice,0).then(function(){
         if(myRun!==aiRun) return;
         idx+=AI_BATCH; aiProgress=Math.min(idx,targets.length);
         if(done>0) state.aiAnalyzed=true;
