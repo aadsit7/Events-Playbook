@@ -1,16 +1,20 @@
 /**
  * Partner Portal — Event Workspace backend (Google Apps Script web app)
  * ---------------------------------------------------------------------
- * This is the existing web script with TWO additive capabilities bolted on:
+ * This is the existing web script with THREE additive capabilities bolted on:
  *   - `categorizeLeads` — runs the "Event Lead Categorizer" SaaS demand-gen
  *     persona over an uploaded contact list.
- *   - `listEvents` — returns the rows of the Events tab so the workspace can
- *     show an event picker on load and prepopulate itself from the selection.
+ *   - `listEvents` — returns the non-completed rows of the Events tab as a
+ *     minimal picker payload (no descriptions, no passwords) so the workspace
+ *     can show its mandatory event dropdown on load.
+ *   - `openEvent` — verifies the selected event's password (the `password`
+ *     column of the Events tab) SERVER-SIDE and only then returns the full
+ *     event row. The password never travels to the browser.
  *
  * NOTHING existing was changed. All original actions
  * (uploadFile / listFiles / deleteFile / analyzeDocument / updateDescription /
  * getConfig) behave exactly as before. The only edits are:
- *   1. new `categorizeLeads` / `listEvents` branches in doPost()
+ *   1. new `categorizeLeads` / `listEvents` / `openEvent` branches in doPost()
  *   2. the new functions at the bottom of this file (clearly fenced)
  *
  * Deploy: Extensions > Apps Script > Deploy > New deployment > Web app
@@ -56,6 +60,12 @@ function doPost(e) {
     // event picker on load and prepopulate itself from the selected event.
     if (payload.action === 'listEvents') {
       return doListEvents();
+    }
+
+    // NEW — open one event by key, verifying its password (if the Events tab
+    // has one for that row) before returning the full details.
+    if (payload.action === 'openEvent') {
+      return doOpenEvent(payload);
     }
 
     if (payload.action === 'getConfig') {
@@ -514,27 +524,28 @@ function jsonOut(obj) {
 }
 
 /**
- * doListEvents
- * Reads the Events tab and returns each row as an object keyed by the header
- * row (event_id, title, description, event_date, end_date, event_type,
+ * readEventRows
+ * Shared reader for the Events tab. Returns each row as an object keyed by the
+ * header row (event_id, title, description, event_date, end_date, event_type,
  * location, url, created_by, created_at, status, partner_id, checklist,
- * lead_count). Values are passed through verbatim — nothing is inferred or
- * rewritten — so the page can prepopulate with exactly what the sheet says.
- * Dates that Sheets stores as real Date values are serialized as yyyy-MM-dd in
- * the spreadsheet's own time zone; text dates (e.g. "11/19/2025") are returned
- * as-is. Very long descriptions are capped to keep the payload light.
+ * lead_count, password). Values are passed through verbatim — nothing is
+ * inferred or rewritten. Dates that Sheets stores as real Date values are
+ * serialized as yyyy-MM-dd in the spreadsheet's own time zone; text dates
+ * (e.g. "11/19/2025") are returned as-is. Fully blank rows and rows without a
+ * title are skipped. Each row also carries `_row` (its sheet row number) so a
+ * row without an event_id can still be addressed unambiguously.
  */
-function doListEvents() {
+function readEventRows() {
   var ss = SpreadsheetApp.openById(SHEET_ID);
   var sheet = ss.getSheetByName('Events');
-  if (!sheet || sheet.getLastRow() < 2) return jsonOut({ ok: true, events: [] });
+  if (!sheet || sheet.getLastRow() < 2) return [];
 
   var numCols = sheet.getLastColumn();
   var headers = sheet.getRange(1, 1, 1, numCols).getValues()[0];
   var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols).getValues();
   var tz = ss.getSpreadsheetTimeZone();
 
-  var events = [];
+  var rows = [];
   for (var i = 0; i < data.length; i++) {
     var obj = {};
     var empty = true;
@@ -543,17 +554,106 @@ function doListEvents() {
       if (!h) continue;
       var v = data[i][j];
       if (v instanceof Date) v = Utilities.formatDate(v, tz, 'yyyy-MM-dd');
-      if (h === 'description' && typeof v === 'string' && v.length > 4000) {
-        v = v.substring(0, 4000) + '…';
-      }
       if (v !== '' && v != null) empty = false;
       obj[h] = v;
     }
-    // Skip fully blank rows and rows without a title — nothing to select.
     if (empty || !String(obj.title || '').trim()) continue;
-    events.push(obj);
+    obj._row = i + 2;
+    rows.push(obj);
+  }
+  return rows;
+}
+
+// Completed events are never offered or served — the workspace is for events
+// that are still live, upcoming, or otherwise workable.
+function isCompletedEvent(row) {
+  return /complete/i.test(String(row.status || ''));
+}
+
+// Stable selector for a row: its event_id when present, else its sheet row.
+function eventKeyOf(row) {
+  var id = String(row.event_id == null ? '' : row.event_id).trim();
+  return id !== '' ? id : ('row-' + row._row);
+}
+
+function eventPasswordOf(row) {
+  return String(row.password == null ? '' : row.password).trim();
+}
+
+/**
+ * doListEvents
+ * Returns ONLY what the event picker needs: key, title, dates, type, location,
+ * status, and whether the event is password-protected. Descriptions, lead
+ * counts, checklists — and above all the password itself — are deliberately
+ * NOT included: full details are only released by `openEvent` after the
+ * password (when one is set on the row) has been verified server-side.
+ * Completed events are excluded entirely.
+ */
+function doListEvents() {
+  var rows = readEventRows();
+  var events = [];
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    if (isCompletedEvent(r)) continue;
+    events.push({
+      key: eventKeyOf(r),
+      title: r.title,
+      event_date: r.event_date || '',
+      end_date: r.end_date || '',
+      event_type: r.event_type || '',
+      location: r.location || '',
+      status: r.status || '',
+      has_password: eventPasswordOf(r) !== ''
+    });
   }
   return jsonOut({ ok: true, events: events });
+}
+
+/**
+ * doOpenEvent
+ * Input payload: { action:'openEvent', eventKey:'<key from listEvents>', password:'<user input>' }
+ * Verifies the password against the row's `password` cell (exact match after
+ * trimming; rows with an empty password cell are open to everyone) and only
+ * then returns the full event row — minus the password itself. The check runs
+ * here, server-side, so the password never travels to the browser. Completed
+ * events are refused even if addressed directly. Very long descriptions are
+ * capped to keep the payload light.
+ */
+function doOpenEvent(payload) {
+  var key = String(payload.eventKey == null ? '' : payload.eventKey).trim();
+  if (!key) return jsonOut({ ok: false, code: 'bad_request', error: 'No event selected' });
+
+  var rows = readEventRows();
+  var found = null;
+  for (var i = 0; i < rows.length; i++) {
+    if (eventKeyOf(rows[i]) === key) { found = rows[i]; break; }
+  }
+  if (!found) {
+    return jsonOut({ ok: false, code: 'not_found', error: 'Event not found — it may have been removed from the sheet' });
+  }
+  if (isCompletedEvent(found)) {
+    return jsonOut({ ok: false, code: 'completed', error: 'This event is completed and can no longer be opened' });
+  }
+
+  var pw = eventPasswordOf(found);
+  if (pw !== '') {
+    var given = String(payload.password == null ? '' : payload.password).trim();
+    if (given !== pw) {
+      return jsonOut({ ok: false, code: 'bad_password', error: 'Incorrect password for this event' });
+    }
+  }
+
+  var out = {};
+  for (var k in found) {
+    if (!Object.prototype.hasOwnProperty.call(found, k)) continue;
+    if (k === 'password' || k === '_row') continue;
+    out[k] = found[k];
+  }
+  if (typeof out.description === 'string' && out.description.length > 4000) {
+    out.description = out.description.substring(0, 4000) + '…';
+  }
+  out.key = eventKeyOf(found);
+  return jsonOut({ ok: true, event: out });
 }
 
 /**

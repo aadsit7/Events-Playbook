@@ -1,45 +1,74 @@
 # Event Workspace — Setup & How It Works
 
-## Event sync from the Google Sheet (on-open event picker)
+## Event gate: mandatory event selection + per-event password
 
-When the Event Workspace opens it immediately calls the web script's new
-**`listEvents`** action, which returns every row of the **`Events`** tab of the
-`Partner_Portal_Database` sheet exactly as stored. The first thing the user
-sees is a **"Select an event"** picker, grouped by the calendar and the sheet's
-own `status` column:
+Opening the Event Workspace now starts at a **mandatory gate** — the workspace
+itself stays hidden until an event has been opened through it:
 
-- **Happening now** — today falls between `event_date` and `end_date`
-- **Upcoming** — `event_date` is in the future
-- **Past** — the event has ended
-- **Cancelled** — `status` contains "cancel"
+1. **Select an event** from a dropdown, synced live from the **`Events`** tab
+   of the `Partner_Portal_Database` sheet. **Completed events never appear**
+   (any row whose `status` contains "complete" is filtered out server-side).
+   The dropdown is grouped by **Happening now / Upcoming / Past / Cancelled**
+   and password-protected events are marked with a 🔒.
+2. **Enter the event's password** — the field only appears if the selected
+   event's `password` cell in the sheet is non-empty. The check happens
+   **server-side** in Apps Script; the password value is never sent to the
+   browser.
+3. **The page opens** showing only that event's details.
 
-Selecting an event prepopulates the workspace **verbatim from the sheet** —
+The gate cannot be dismissed until an event is opened — there is no
+"Not now". After the first unlock, the header's **"Change event"** button
+reopens the picker (with a Cancel option), and switching to another
+password-protected event requires *that* event's password.
+
+### Setting a password on an event
+
+The `Events` tab has a **`password`** column (header already added, column O).
+Type a password into that cell to protect the event; leave it blank for the
+event to open without one. Matching is exact after trimming whitespace.
+
+### The two actions behind the gate
+
+- **`listEvents`** — returns only what the picker needs for **non-completed**
+  rows: `key` (the `event_id`, or `row-N` for rows without one), `title`,
+  `event_date`, `end_date`, `event_type`, `location`, `status`, and a
+  `has_password` flag. Descriptions, lead counts, checklists and passwords are
+  deliberately **not** in this payload.
+- **`openEvent`** — takes `{ eventKey, password }`, verifies the password
+  against the sheet, refuses completed events even when addressed directly,
+  and only then returns the full row (minus the password). Error codes:
+  `bad_password`, `not_found`, `completed`.
+
+Opening an event prepopulates the workspace **verbatim from the sheet** —
 nothing is inferred or invented:
 
 | Sheet column | Where it lands |
 | --- | --- |
 | `title` | workspace header title |
 | `event_type` | type badge + the Playbook event-type selector (non-preset types like *Roundtable* / *Campaign* are added verbatim) |
-| `status` | status badge (color-coded: upcoming/in-progress, completed, cancelled) |
+| `status` | status badge (color-coded: upcoming/in-progress, cancelled) |
 | `event_date` / `end_date` | header date range, the Playbook's event anchor, and every lead-up (−28/−14/−7/−1 days) and follow-up (+1/+7/+30–90 days) timeline date |
 | `location` | header location + event anchor |
 | `description` | short summary line under the header |
-| `lead_count` | shown in the picker row |
+| `password` | gate only — never displayed, never sent to the browser |
 
 Accuracy rules: dates are parsed only from the two formats the sheet actually
 uses (`M/D/YYYY` text and real date cells, which the script serializes as
-`yyyy-MM-dd`); an unparseable date renders blank rather than guessed. A
-**"Change event"** button in the header re-syncs and reopens the picker, and
-**"Not now"** keeps the sample view. If the backend is unreachable or not yet
-redeployed, the modal explains why and offers a retry — the rest of the app
-keeps working.
+`yyyy-MM-dd`); an unparseable date renders blank rather than guessed. If the
+backend is unreachable or not yet redeployed, the gate explains why and offers
+a retry.
 
-> ⚠️ **Redeploy required:** `listEvents` only exists once you update the
-> Apps Script project with this repo's `Code.gs` and publish a **new version**
-> of the existing web-app deployment (same steps as section 2 below). Until
-> then the picker will report *"Unknown action: listEvents"*.
+> ⚠️ **Redeploy required:** `listEvents` and `openEvent` only behave as
+> described once you update the Apps Script project with this repo's `Code.gs`
+> and publish a **new version** of the existing web-app deployment (same steps
+> as section 2 below). Until then the gate will report *"Unknown action"*.
 
-Nothing is written back to the sheet by this feature — `listEvents` is
+> 🔐 **Security note:** the gate keeps event details out of the *page* until
+> the password is verified, and the password itself never leaves the server.
+> It is access gating for a shared workspace link, not hardened auth — anyone
+> with edit access to the sheet can read the `password` column.
+
+Nothing is written back to the sheet by this feature — both actions are
 read-only.
 
 ---
@@ -109,9 +138,10 @@ holding your "Randy" personas, and the Apps Script already calls Claude with the
 
 1. Open the Apps Script project bound to the sheet (**Extensions → Apps Script**).
 2. Replace the script with **`apps-script/Code.gs`** from this repo. It is your
-   existing script **unchanged**, plus the new `categorizeLeads` and `listEvents`
-   actions — all six original actions (`uploadFile`, `listFiles`, `deleteFile`,
-   `analyzeDocument`, `updateDescription`, `getConfig`) are byte-for-byte the same.
+   existing script **unchanged**, plus the new `categorizeLeads`, `listEvents`
+   and `openEvent` actions — all six original actions (`uploadFile`, `listFiles`,
+   `deleteFile`, `analyzeDocument`, `updateDescription`, `getConfig`) are
+   byte-for-byte the same.
 3. Confirm `ANTHROPIC_API_KEY` still exists under
    **Project Settings → Script properties**.
 
