@@ -357,6 +357,7 @@ tbody tr:hover{background:var(--surface-hover)}
   };
   var AI_BATCH=20, AI_MAX=400;      // leads per request, and a safety cap per run
   var aiBusy=false, aiProgress=0, aiTotal=0;
+  var aiRun=0;                      // run token: a new upload supersedes any in-flight analysis
   function aiConfigured(){return CONFIG.webAppUrl && CONFIG.webAppUrl.indexOf('PASTE')<0 && CONFIG.webAppUrl.indexOf('/exec')>0;}
 
   /* ================= helpers ================= */
@@ -839,7 +840,14 @@ tbody tr:hover{background:var(--surface-hover)}
         state.fileName=file.name; state.updated='just now';
         state.search='';state.filter='all';
         rerenderData();
-        toast('Imported '+state.contacts.length.toLocaleString()+' contacts from '+file.name);
+        if(aiConfigured()){
+          // Auto-analyze every upload: the expert persona fills in buyer role,
+          // seniority and company so the user never sees heuristic-only guesses.
+          toast('Imported '+state.contacts.length.toLocaleString()+' contacts — ✨ AI analysis starting…');
+          analyzeContactsWithAI(true);
+        } else {
+          toast('Imported '+state.contacts.length.toLocaleString()+' contacts from '+file.name);
+        }
       } else {
         toast('Could not read '+file.name+' — try a .xlsx or .csv with a header row');
       }
@@ -892,13 +900,16 @@ tbody tr:hover{background:var(--surface-hover)}
   }
 
   /* ================= AI lead categorization =================
-     Sends the current contacts to the web script in small batches. Each contact
-     is classified by the "Event Lead Categorizer" persona into an ICP buyer role
-     (Decision Maker / Champion / Influencer / Unknown), a seniority tier, and a
-     cleaned company name. Results are applied back onto the same fields the rest
-     of the app already reads, so the seniority donut, ICP badges and role filter
-     all update automatically. Accuracy-first: blank/ambiguous titles come back as
-     "Unknown" rather than a guess, and company is only re-cased, never invented. */
+     Runs automatically after every file upload (the ✨ button re-runs it on
+     demand). Sends the current contacts to the web script in small batches. Each
+     contact is classified by the "Event Lead Categorizer" persona into an ICP
+     buyer role (Decision Maker / Champion / Influencer / Unknown), a seniority
+     tier, and a cleaned company name. Results are applied back onto the same
+     fields the rest of the app already reads, so the seniority donut, ICP badges
+     and role filter all update automatically. Accuracy-first: blank/ambiguous
+     titles come back as "Unknown" rather than a guess, and company is only
+     re-cased, never invented. A new upload supersedes an in-flight run (run
+     token), so results can never land on the wrong list. */
   function aiFetch(payload){
     // text/plain avoids a CORS preflight that Apps Script cannot answer; the
     // script still reads the raw JSON string from e.postData.contents.
@@ -938,21 +949,25 @@ tbody tr:hover{background:var(--surface-hover)}
       if(r.rationale) c.aiRationale=String(r.rationale);
     });
   }
-  function analyzeContactsWithAI(){
-    if(aiBusy) return;
-    if(!aiConfigured()){ toast('Set CONFIG.webAppUrl to your Apps Script Web App URL to enable AI'); return; }
+  function analyzeContactsWithAI(auto){
+    if(aiBusy && !auto) return;       // ignore manual re-clicks while a run is in flight
+    if(!aiConfigured()){ if(!auto) toast('Set CONFIG.webAppUrl to your Apps Script Web App URL to enable AI'); return; }
+    var myRun=++aiRun;                // this run now owns the results; older runs stop writing
     var targets=state.contacts.slice(0,AI_MAX);
     if(state.contacts.length>AI_MAX) toast('Analyzing the first '+AI_MAX+' of '+state.contacts.length+' contacts');
     aiBusy=true; aiProgress=0; aiTotal=targets.length; rerenderData();
     var idx=0, done=0, failed=0;
     function nextBatch(){
+      if(myRun!==aiRun) return;       // superseded by a newer upload — stop cleanly
       if(idx>=targets.length){ finish(); return; }
       var slice=targets.slice(idx, idx+AI_BATCH);
       var leads=slice.map(function(c){return {index:c.id,name:c.name,company:c.company,title:c.title,email:c.email};});
       aiFetch({action:'categorizeLeads', leads:leads}).then(function(res){
+        if(myRun!==aiRun) return;     // stale response — never write onto a newer list
         if(res && res.ok && res.results && res.results.length){ applyAIResults(res.results); done+=slice.length; }
         else { failed+=slice.length; }
-      }).catch(function(){ failed+=slice.length; }).then(function(){
+      }).catch(function(){ if(myRun===aiRun) failed+=slice.length; }).then(function(){
+        if(myRun!==aiRun) return;
         idx+=AI_BATCH; aiProgress=Math.min(idx,targets.length);
         if(done>0) state.aiAnalyzed=true;
         rerenderData(); nextBatch();

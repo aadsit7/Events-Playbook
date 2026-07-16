@@ -1,11 +1,13 @@
 # AI Lead Categorization — Setup & How It Works
 
-This adds an optional **"Analyze with AI"** button to the Event Workspace
-(`index.html`). It sends the uploaded contact list to the Partner Portal web
-script, which asks a **SaaS demand-generation expert persona** to classify each
-lead. The feature is fully **additive** — if the backend is unreachable, the app
-keeps working exactly as before (the local title heuristic still fills the ICP
-role), so nothing is broken while you set this up.
+This adds AI lead categorization to the Event Workspace (`index.html`). The
+analysis **runs automatically the moment an Excel/CSV target list is uploaded**,
+and an **"Analyze with AI"** button re-runs it on demand. Both send the contact
+list to the Partner Portal web script, which asks a **SaaS demand-generation
+expert persona** to classify each lead. The feature is fully **additive** — if
+the backend is unreachable, the app keeps working exactly as before (the local
+title heuristic still fills the ICP role), so nothing is broken while you set
+this up.
 
 ---
 
@@ -59,20 +61,22 @@ holding your "Randy" personas, and the Apps Script already calls Claude with the
 
 ### 2. Redeploy as a web app with **"Anyone"** access
 
-> ⚠️ **Verified on 2026-07-16:** a probe of the `/exec` URL currently in
-> `index.html` returned Google's *"Page Not Found"* page for an anonymous
-> request. That means the browser page cannot call it yet. To fix it, create a
-> deployment reachable without a Google login:
-
-**Deploy → New deployment → Web app**
+Update the **existing** deployment so the URL doesn't change:
+**Deploy → Manage deployments → ✏️ → Version: New version**
 - **Execute as:** Me
 - **Who has access:** **Anyone**
 
-Copy the resulting `/exec` URL.
+> ✅ **Verified live on 2026-07-16:** the `/exec` URL in `index.html` was probed
+> anonymously — the endpoint answers, and the new `categorizeLeads` action
+> responds correctly (old code would reply *"Unknown action"*). A 3-lead
+> end-to-end test returned accurate classifications, including `Unknown` for a
+> blank title instead of a guess.
 
 ### 3. Point the page at your deployment
 
-In `index.html`, set the URL near the top of the script:
+Already done — `CONFIG.webAppUrl` near the top of the script in `index.html` is
+set to the live `/exec` URL. If the deployment URL ever changes, update it
+there:
 
 ```js
 var CONFIG={
@@ -80,8 +84,10 @@ var CONFIG={
 };
 ```
 
-Then upload a target list and click **✨ Analyze with AI**. Contacts are
-classified in batches of 20 with a live progress count.
+Then just **upload a target list** — AI analysis starts automatically and
+contacts are classified in batches of 20 with a live progress count. The
+**✨ Analyze with AI** button re-runs the analysis on the current list whenever
+you want.
 
 ---
 
@@ -189,3 +195,9 @@ safe. Unrecognized values are ignored rather than applied.
   never receives the Anthropic key.
 - **Batch + cap.** Up to `AI_MAX` (400) contacts per run, 20 per request, so a
   huge upload can't hang the browser or the script.
+- **Upload supersedes.** Uploading a new file while an analysis is still running
+  cancels the old run at its next batch (run token) — stale responses are
+  discarded, so results can never land on the wrong list.
+- **Auto-run only on real uploads.** The demo data shown on first page load is
+  never sent to the AI; only files the user uploads trigger the automatic
+  analysis.
