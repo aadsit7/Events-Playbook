@@ -279,6 +279,37 @@ tbody tr:hover{background:var(--surface-hover)}
 #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;font-size:13px;font-weight:500;padding:11px 18px;border-radius:var(--r-full);box-shadow:var(--shadow-lg);opacity:0;transition:all .3s;z-index:50;pointer-events:none;max-width:90vw}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
+/* ---------- Event picker (Google Sheets sync) ---------- */
+.modal-backdrop{position:fixed;inset:0;background:rgba(23,29,43,.45);backdrop-filter:blur(3px);display:flex;align-items:flex-start;justify-content:center;padding:8vh 20px 20px;z-index:40;animation:fade .2s ease}
+.modal-backdrop[hidden]{display:none}
+.modal{background:var(--surface);border-radius:var(--r-xl);box-shadow:var(--shadow-lg);width:100%;max-width:580px;max-height:78vh;display:flex;flex-direction:column;overflow:hidden}
+.modal__head{padding:20px 22px 14px;border-bottom:1px solid var(--border-light)}
+.modal__title{font-family:var(--display);font-weight:700;font-size:17px;display:flex;align-items:center;gap:9px}
+.modal__title svg{width:19px;height:19px;color:var(--teal);flex-shrink:0}
+.modal__sub{font-size:12.5px;color:var(--muted);margin-top:3px}
+.modal__body{overflow:auto;padding:8px 12px 12px;flex:1}
+.modal__foot{padding:12px 22px;border-top:1px solid var(--border-light);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.modal__foot .hint{font-size:12px;color:var(--muted)}
+.evgroup{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:14px 10px 6px}
+.evrow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:1px solid transparent;border-radius:var(--r-md);padding:11px 12px;cursor:pointer;transition:all .12s;font-family:var(--font)}
+.evrow:hover{background:var(--surface-hover);border-color:var(--border)}
+.evrow__main{flex:1;min-width:0}
+.evrow__title{font-weight:600;font-size:14px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.evrow__meta{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.evrow__status{font-size:11px;font-weight:600;padding:3px 10px;border-radius:var(--r-full);white-space:nowrap;flex-shrink:0}
+.st-live{background:#E6F5F3;color:var(--teal)}
+.st-upcoming{background:#EAF0FF;color:var(--primary-dark)}
+.st-past{background:#EEF1F7;color:#5B6577}
+.st-cancelled{background:#FDECEE;color:#C4414E}
+.modal-spin{display:flex;flex-direction:column;align-items:center;gap:12px;padding:44px 16px;color:var(--muted);font-size:13.5px}
+.modal-spin .spin{width:22px;height:22px;border-width:3px;border-color:rgba(47,107,255,.25);border-top-color:var(--primary)}
+.modal .empty{padding:36px 16px}
+/* event header extras */
+.ehead__desc{margin-top:10px;font-size:13px;color:var(--text);max-width:760px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ehead__actions{display:flex;gap:8px;align-items:center;padding-top:4px}
+.badge--done{background:#EEF1F7;color:#5B6577}
+.badge--cancel{background:#FDECEE;color:#C4414E}
+
 @media(max-width:900px){
   .kpis{grid-template-columns:repeat(2,1fr)}
   .grid-3{grid-template-columns:1fr}
@@ -303,21 +334,8 @@ tbody tr:hover{background:var(--surface-hover)}
 </div>
 
 <div class="wrap">
-  <!-- ===== Event header ===== -->
-  <div class="ehead">
-    <div>
-      <div class="ehead__title">Partner Summit 2026</div>
-      <div class="ehead__meta">
-        <span class="badge badge--type">Conference</span>
-        <span class="badge badge--status">Upcoming</span>
-        <span class="dot">•</span>
-        <span><svg viewBox="0 0 20 20" fill="none"><rect x="3" y="4" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 9h14M7 2v4M13 2v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>May 15–17, 2026</span>
-        <span class="dot">•</span>
-        <span><svg viewBox="0 0 20 20" fill="none"><path d="M10 2c3 0 5.5 2.4 5.5 5.5 0 4-5.5 10-5.5 10S4.5 11.5 4.5 7.5 7 2 10 2z" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="7.5" r="2" stroke="currentColor" stroke-width="1.5"/></svg>Las Vegas, NV</span>
-      </div>
-      <div class="shared" id="shared-line"></div>
-    </div>
-  </div>
+  <!-- ===== Event header (rendered from the selected event) ===== -->
+  <div class="ehead" id="ehead"></div>
 
   <!-- ===== Tabs ===== -->
   <div class="tabs">
@@ -332,18 +350,40 @@ tbody tr:hover{background:var(--surface-hover)}
 
   <div class="note">
     <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/><path d="M10 9v4.5M10 6.5v.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-    Sample preview — data is generated for demo. Replace the target list to import your own, move contacts through the funnel, and tick playbook tasks. Nothing is saved.
+    Event details sync live from the Events tab of the Partner Portal Google Sheet — use “Change event” to switch. Contacts and playbook progress are demo data; replace the target list to import your own. Nothing is saved back to the sheet.
   </div>
 </div>
 
 <input type="file" id="file-input" accept=".xlsx,.xls,.csv" hidden>
 <div id="toast"></div>
 
+<!-- ===== Event picker (synced from the Events tab) ===== -->
+<div class="modal-backdrop" id="event-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Select an event">
+    <div class="modal__head">
+      <div class="modal__title">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M16.5 10a6.5 6.5 0 11-1.9-4.6M16.5 2.5v3h-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Select an event
+      </div>
+      <div class="modal__sub">Synced live from the Events tab of the Partner Portal Google Sheet. Picking one fills the workspace with that event’s details.</div>
+    </div>
+    <div class="modal__body" id="event-modal-body"></div>
+    <div class="modal__foot">
+      <span class="hint">Only the event details load — contacts stay as they are.</span>
+      <button class="btn js-modal-skip">Not now</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
   "use strict";
 
-  /* ================= AI config =================
+  /* ================= backend config =================
+     CONFIG.webAppUrl points at the Partner Portal web script and powers two
+     things: (1) the on-open event sync — a `listEvents` call that loads the
+     Events tab from the Google Sheet so the user can pick an event and have
+     its details prepopulate the workspace; (2) AI lead categorization below.
      The "Analyze with AI" button sends the current contact list to the Partner
      Portal web script (Google Apps Script), which asks the SaaS demand-gen
      expert persona ("Event Lead Categorizer", stored in the Custom_Prompts tab)
@@ -373,6 +413,33 @@ tbody tr:hover{background:var(--surface-hover)}
   function avColor(s){var h=0;s=String(s);for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;return AV_COLORS[h%AV_COLORS.length];}
   function el(id){return document.getElementById(id);}
   function toast(msg){var t=el('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('show');},2600);}
+
+  /* ================= date helpers ================= */
+  var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  // Parses only the two formats the sheet actually uses — yyyy-MM-dd (real Date
+  // cells serialized by the script) and M/D/YYYY (text cells). Anything else
+  // returns null rather than a guessed date.
+  function parseSheetDate(s){
+    if(!s) return null; s=String(s).trim();
+    var m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if(m) return new Date(+m[1],+m[2]-1,+m[3]);
+    m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if(m) return new Date(+m[3],+m[1]-1,+m[2]);
+    return null;
+  }
+  function addDays(d,n){return new Date(d.getFullYear(),d.getMonth(),d.getDate()+n);}
+  function startOfToday(){var n=new Date();return new Date(n.getFullYear(),n.getMonth(),n.getDate());}
+  function fmtShort(d){return MONTHS[d.getMonth()]+' '+d.getDate();}
+  function fmtRange(a,b){
+    if(!a) return '';
+    if(!b||b.getTime()===a.getTime()) return fmtShort(a)+', '+a.getFullYear();
+    if(a.getFullYear()===b.getFullYear()){
+      if(a.getMonth()===b.getMonth()) return MONTHS[a.getMonth()]+' '+a.getDate()+'–'+b.getDate()+', '+a.getFullYear();
+      return fmtShort(a)+' – '+fmtShort(b)+', '+b.getFullYear();
+    }
+    return fmtShort(a)+', '+a.getFullYear()+' – '+fmtShort(b)+', '+b.getFullYear();
+  }
+  function snip(s,n){s=String(s||'').replace(/\s+/g,' ').trim();return s.length>n?s.slice(0,n-1)+'…':s;}
 
   /* ================= status model ================= */
   // Two-button contact status: default 'none' -> 'meeting' or 'declined'
@@ -428,7 +495,15 @@ tbody tr:hover{background:var(--surface-hover)}
   }
 
   /* ================= state ================= */
+  // state.event is what the header + playbook render from. It starts as the
+  // demo event and is replaced verbatim by whichever row of the Events sheet
+  // the user picks — values come straight from the sheet, nothing is invented.
   var state={
+    event:{
+      id:null, title:'Partner Summit 2026', type:'Conference', status:'Upcoming',
+      start:new Date(2026,4,15), end:new Date(2026,4,17),
+      location:'Las Vegas, NV', description:'', leadCount:null, source:'demo'
+    },
     contacts:genContacts(240),
     fileName:'summit-targets.xlsx',
     updated:'2 days ago',
@@ -657,17 +732,26 @@ tbody tr:hover{background:var(--surface-hover)}
   function sparkSVG(){return '<svg viewBox="0 0 20 20" fill="none"><path d="M10 2.2l1.5 4.3 4.3 1.5-4.3 1.5L10 13.8 8.5 9.5 4.2 8l4.3-1.5L10 2.2z" fill="currentColor"/><path d="M15.6 12.4l.55 1.6 1.6.55-1.6.55-.55 1.6-.55-1.6-1.6-.55 1.6-.55.55-1.6z" fill="currentColor"/></svg>';}
 
   /* ================= PLAYBOOK ================= */
+  // Timeline dates are derived from the selected event's real dates: lead-up
+  // offsets count back from the start date, follow-up offsets count forward
+  // from the end date. If the event has no parseable date, the label is blank.
   var LEADUP=[
-    {key:'lead_4w',rel:'4 weeks out',date:'Apr 17',title:'Set the target list & goals'},
-    {key:'lead_2w',rel:'2 weeks out',date:'May 1',title:'Build outreach & align with partner'},
-    {key:'lead_1w',rel:'1 week out',date:'May 8',title:'Lock in meetings & logistics'},
-    {key:'lead_1d',rel:'Day before',date:'May 14',title:'Final prep & team huddle'}
+    {key:'lead_4w',rel:'4 weeks out',off:-28,title:'Set the target list & goals'},
+    {key:'lead_2w',rel:'2 weeks out',off:-14,title:'Build outreach & align with partner'},
+    {key:'lead_1w',rel:'1 week out',off:-7,title:'Lock in meetings & logistics'},
+    {key:'lead_1d',rel:'Day before',off:-1,title:'Final prep & team huddle'}
   ];
   var FOLLOWUP=[
-    {key:'fu_24h',rel:'Within 24 hrs',date:'by May 18',title:'Immediate personal follow-up'},
-    {key:'fu_2_7d',rel:'2–7 days',date:'by May 24',title:'Multi-touch outreach'},
-    {key:'fu_30_90d',rel:'30–90 days',date:'Jun–Aug',title:'Convert to pipeline & revenue'}
+    {key:'fu_24h',rel:'Within 24 hrs',off:1,prefix:'by ',title:'Immediate personal follow-up'},
+    {key:'fu_2_7d',rel:'2–7 days',off:7,prefix:'by ',title:'Multi-touch outreach'},
+    {key:'fu_30_90d',rel:'30–90 days',range:[30,90],title:'Convert to pipeline & revenue'}
   ];
+  function tlDate(meta){
+    var ev=state.event, base=meta.off<0?ev.start:(ev.end||ev.start);
+    if(!base) return '';
+    if(meta.range) return MONTHS[addDays(base,meta.range[0]).getMonth()]+'–'+MONTHS[addDays(base,meta.range[1]).getMonth()];
+    return (meta.prefix||'')+fmtShort(addDays(base,meta.off));
+  }
   function playbookStats(){
     var done=0,total=0;
     Object.keys(state.playbook).forEach(function(k){state.playbook[k].forEach(function(i){total++;if(i.done)done++;});});
@@ -676,6 +760,9 @@ tbody tr:hover{background:var(--surface-hover)}
   function renderPlaybook(){
     var st=playbookStats();
     var types=['Direct Event','Partner Event','Conference','Webinar','User Group'];
+    // A synced event may use a type outside the presets (e.g. Roundtable,
+    // Campaign) — surface it verbatim rather than forcing a wrong preset.
+    if(state.eventType && types.indexOf(state.eventType)<0) types.unshift(state.eventType);
     var typebar=types.map(function(t){return '<button class="typebtn'+(t===state.eventType?' typebtn--active':'')+'" data-type="'+esc(t)+'">'+esc(t)+'</button>';}).join('');
 
     var head=''
@@ -714,7 +801,7 @@ tbody tr:hover{background:var(--surface-hover)}
   function tlItem(meta){
     var items=state.playbook[meta.key],p=stageProgress(items);
     return '<div class="tl__item">'
-      +'<div class="tl__meta"><span class="tl__rel">'+esc(meta.rel)+'</span><span class="tl__date">'+esc(meta.date)+'</span></div>'
+      +'<div class="tl__meta"><span class="tl__rel">'+esc(meta.rel)+'</span><span class="tl__date">'+esc(tlDate(meta))+'</span></div>'
       +'<div class="tl__node"><span class="tl__dot"></span></div>'
       +'<div class="tl__card">'
       +'  <div class="tl__title">'+esc(meta.title)+'<span class="tl__count">'+p.d+'/'+p.t+'</span></div>'
@@ -726,7 +813,7 @@ tbody tr:hover{background:var(--surface-hover)}
     var items=state.playbook.at_event,p=stageProgress(items);
     return '<div class="anchor anchor--event">'
       +'<div class="anchor__row"><span class="anchor__badge"><svg viewBox="0 0 16 16" width="14" height="14" fill="none"><path d="M8 1.4l1.85 3.75 4.15.6-3 2.92.71 4.13L8 10.95 4.29 12.8 5 8.67l-3-2.92 4.15-.6L8 1.4z" fill="currentColor"/></svg>The event</span>'
-      +'<span class="anchor__when">May 15–17, 2026 · Las Vegas</span></div>'
+      +'<span class="anchor__when">'+esc([fmtRange(state.event.start,state.event.end),state.event.location].filter(Boolean).join(' · ')||'Date TBD')+'</span></div>'
       +'<div class="anchor__title">Execute on-site <span class="tl__count" style="font-weight:400;margin-left:6px">'+p.d+'/'+p.t+' done</span></div>'
       +'<div class="mini-bar"><div class="mini-bar__fill" style="width:'+p.pct+'%;background:var(--teal)"></div></div>'
       +'<div class="clist">'+checklist('at_event',items)+'</div>'
@@ -746,6 +833,38 @@ tbody tr:hover{background:var(--surface-hover)}
       +'</div>';
   }
   function flowArrow(){return '<div class="flow"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14m0 0l-5-5m5 5l5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';}
+
+  /* ================= EVENT HEADER ================= */
+  var CAL_SVG='<svg viewBox="0 0 20 20" fill="none"><rect x="3" y="4" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 9h14M7 2v4M13 2v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+  var PIN_SVG='<svg viewBox="0 0 20 20" fill="none"><path d="M10 2c3 0 5.5 2.4 5.5 5.5 0 4-5.5 10-5.5 10S4.5 11.5 4.5 7.5 7 2 10 2z" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="7.5" r="2" stroke="currentColor" stroke-width="1.5"/></svg>';
+  function statusBadgeClass(status){
+    var s=String(status||'').toLowerCase();
+    if(s.indexOf('cancel')>=0) return ' badge--cancel';
+    if(s.indexOf('complete')>=0) return ' badge--done';
+    return '';
+  }
+  function renderEventHeader(){
+    var ev=state.event;
+    var meta='';
+    if(ev.type) meta+='<span class="badge badge--type">'+esc(ev.type)+'</span>';
+    if(ev.status) meta+='<span class="badge badge--status'+statusBadgeClass(ev.status)+'">'+esc(ev.status)+'</span>';
+    var when=fmtRange(ev.start,ev.end);
+    if(when) meta+='<span class="dot">•</span><span>'+CAL_SVG+esc(when)+'</span>';
+    if(ev.location) meta+='<span class="dot">•</span><span>'+PIN_SVG+esc(ev.location)+'</span>';
+    var desc=ev.description?'<div class="ehead__desc" title="'+esc(snip(ev.description,600))+'">'+esc(snip(ev.description,300))+'</div>':'';
+    var actions=aiConfigured()
+      ?'<div class="ehead__actions"><button class="btn js-change-event"><svg viewBox="0 0 20 20" fill="none"><path d="M16.5 10a6.5 6.5 0 11-1.9-4.6M16.5 2.5v3h-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Change event</button></div>'
+      :'';
+    el('ehead').innerHTML=''
+      +'<div>'
+      +'  <div class="ehead__title">'+esc(ev.title)+'</div>'
+      +'  <div class="ehead__meta">'+meta+'</div>'
+      +   desc
+      +'  <div class="shared" id="shared-line"></div>'
+      +'</div>'
+      + actions;
+    renderShared();
+  }
 
   /* ================= shared header avatars ================= */
   function renderShared(){
@@ -819,6 +938,7 @@ tbody tr:hover{background:var(--surface-hover)}
   // Upload (delegated buttons -> hidden input)
   document.body.addEventListener('click',function(e){
     if(e.target.closest('.js-ai')){ analyzeContactsWithAI(); return; }
+    if(e.target.closest('.js-change-event')){ syncEvents(); return; }
     if(e.target.closest('.js-upload')) el('file-input').click();
     if(e.target.closest('.js-template')) downloadTemplate();
   });
@@ -983,11 +1103,115 @@ tbody tr:hover{background:var(--surface-hover)}
     nextBatch();
   }
 
+  /* ================= EVENT SYNC (Google Sheets) =================
+     On open the page calls the web script's `listEvents` action, which returns
+     the Events tab verbatim, and asks the user to select an event before
+     anything else. The chosen row prepopulates the workspace exactly as the
+     sheet has it — title, type, status, dates, location and description are
+     copied 1:1, and the playbook timeline is recomputed from the event's real
+     dates. Nothing is inferred: rows without a parseable date simply render
+     without one, and unknown event types are shown verbatim. If the backend is
+     unreachable the modal offers a retry and the demo view keeps working. */
+  var sheetEvents=[];
+  function normalizeEvent(raw){
+    if(!raw) return null;
+    var title=String(raw.title||'').trim();
+    if(!title) return null;
+    var start=parseSheetDate(raw.event_date);
+    var end=parseSheetDate(raw.end_date)||start;
+    if(start&&end&&end<start) end=start;
+    var leads=(raw.lead_count===''||raw.lead_count==null)?null:Number(raw.lead_count);
+    return {
+      id:(raw.event_id!=null&&raw.event_id!=='')?String(raw.event_id):null,
+      title:title,
+      type:String(raw.event_type||'').trim(),
+      status:String(raw.status||'').trim(),
+      start:start, end:end,
+      location:String(raw.location||'').trim(),
+      description:String(raw.description||'').trim(),
+      leadCount:isNaN(leads)?null:leads,
+      source:'sheet'
+    };
+  }
+  // Grouping is by the sheet's own status plus the real calendar: an event is
+  // "happening now" only if today falls inside its date range.
+  function groupOf(ev){
+    if(/cancel/i.test(ev.status)) return 'cancelled';
+    var t=startOfToday().getTime();
+    if(ev.start&&ev.end&&ev.start.getTime()<=t&&t<=ev.end.getTime()) return 'live';
+    if(ev.start&&ev.start.getTime()>t) return 'upcoming';
+    return 'past';
+  }
+  function showEventModal(){el('event-modal').hidden=false;}
+  function hideEventModal(){el('event-modal').hidden=true;}
+  function modalBody(html){el('event-modal-body').innerHTML=html;showEventModal();}
+  function syncEvents(){
+    if(!aiConfigured()){toast('Set CONFIG.webAppUrl to your Apps Script Web App URL to enable event sync');return;}
+    modalBody('<div class="modal-spin"><span class="spin"></span>Syncing events from the Google Sheet…</div>');
+    aiFetch({action:'listEvents'}).then(function(res){
+      if(res&&res.ok&&res.events&&res.events.map){
+        sheetEvents=res.events.map(normalizeEvent).filter(Boolean);
+        renderEventList();
+      } else {
+        modalBody(syncErrHTML(res&&res.error));
+      }
+    }).catch(function(){modalBody(syncErrHTML());});
+  }
+  function syncErrHTML(err){
+    return '<div class="empty">Could not load events from the Google Sheet'
+      +(err?(' — '+esc(String(err))):'')
+      +'.<br>Make sure the web script is redeployed with the <b>listEvents</b> action.'
+      +'<br><br><button class="btn js-modal-retry">Try again</button></div>';
+  }
+  function renderEventList(){
+    if(!sheetEvents.length){modalBody('<div class="empty">No events found in the Events tab of the sheet.</div>');return;}
+    var groups={live:[],upcoming:[],past:[],cancelled:[]};
+    sheetEvents.forEach(function(e,i){e._idx=i;groups[groupOf(e)].push(e);});
+    function ts(e){return e.start?e.start.getTime():0;}
+    function asc(a,b){return ts(a)-ts(b);} function desc(a,b){return ts(b)-ts(a);}
+    groups.live.sort(asc);groups.upcoming.sort(asc);groups.past.sort(desc);groups.cancelled.sort(desc);
+    modalBody(
+      evGroupHTML('Happening now',groups.live,'st-live')
+      +evGroupHTML('Upcoming',groups.upcoming,'st-upcoming')
+      +evGroupHTML('Past',groups.past,'st-past')
+      +evGroupHTML('Cancelled',groups.cancelled,'st-cancelled')
+    );
+  }
+  function evGroupHTML(label,arr,cls){
+    if(!arr.length) return '';
+    return '<div class="evgroup">'+label+'</div>'+arr.map(function(e){
+      var meta=[e.type,fmtRange(e.start,e.end),e.location,(e.leadCount!=null?e.leadCount+' leads':null)]
+        .filter(Boolean).join(' · ');
+      return '<button class="evrow" data-idx="'+e._idx+'">'
+        +'<div class="evrow__main"><div class="evrow__title">'+esc(e.title)+'</div>'
+        +'<div class="evrow__meta">'+esc(meta)+'</div></div>'
+        +'<span class="evrow__status '+cls+'">'+esc(e.status||label)+'</span></button>';
+    }).join('');
+  }
+  function applyEvent(ev){
+    state.event=ev;
+    if(ev.type) state.eventType=ev.type;
+    renderEventHeader();
+    renderPlaybook();
+    toast('Loaded “'+ev.title+'” from the Events sheet');
+  }
+  el('event-modal').addEventListener('click',function(e){
+    if(e.target===el('event-modal')||e.target.closest('.js-modal-skip')){hideEventModal();return;}
+    if(e.target.closest('.js-modal-retry')){syncEvents();return;}
+    var row=e.target.closest('.evrow');
+    if(row){
+      var ev=sheetEvents[Number(row.getAttribute('data-idx'))];
+      if(ev){hideEventModal();applyEvent(ev);}
+    }
+  });
+
   /* ================= init ================= */
-  renderShared();
+  renderEventHeader();
   renderOverview();
   renderContacts();
   renderPlaybook();
+  // First thing on open: sync the Events tab and ask the user to pick an event.
+  syncEvents();
 })();
 </script>
 </body>

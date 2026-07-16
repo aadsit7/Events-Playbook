@@ -1,3 +1,49 @@
+# Event Workspace — Setup & How It Works
+
+## Event sync from the Google Sheet (on-open event picker)
+
+When the Event Workspace opens it immediately calls the web script's new
+**`listEvents`** action, which returns every row of the **`Events`** tab of the
+`Partner_Portal_Database` sheet exactly as stored. The first thing the user
+sees is a **"Select an event"** picker, grouped by the calendar and the sheet's
+own `status` column:
+
+- **Happening now** — today falls between `event_date` and `end_date`
+- **Upcoming** — `event_date` is in the future
+- **Past** — the event has ended
+- **Cancelled** — `status` contains "cancel"
+
+Selecting an event prepopulates the workspace **verbatim from the sheet** —
+nothing is inferred or invented:
+
+| Sheet column | Where it lands |
+| --- | --- |
+| `title` | workspace header title |
+| `event_type` | type badge + the Playbook event-type selector (non-preset types like *Roundtable* / *Campaign* are added verbatim) |
+| `status` | status badge (color-coded: upcoming/in-progress, completed, cancelled) |
+| `event_date` / `end_date` | header date range, the Playbook's event anchor, and every lead-up (−28/−14/−7/−1 days) and follow-up (+1/+7/+30–90 days) timeline date |
+| `location` | header location + event anchor |
+| `description` | short summary line under the header |
+| `lead_count` | shown in the picker row |
+
+Accuracy rules: dates are parsed only from the two formats the sheet actually
+uses (`M/D/YYYY` text and real date cells, which the script serializes as
+`yyyy-MM-dd`); an unparseable date renders blank rather than guessed. A
+**"Change event"** button in the header re-syncs and reopens the picker, and
+**"Not now"** keeps the sample view. If the backend is unreachable or not yet
+redeployed, the modal explains why and offers a retry — the rest of the app
+keeps working.
+
+> ⚠️ **Redeploy required:** `listEvents` only exists once you update the
+> Apps Script project with this repo's `Code.gs` and publish a **new version**
+> of the existing web-app deployment (same steps as section 2 below). Until
+> then the picker will report *"Unknown action: listEvents"*.
+
+Nothing is written back to the sheet by this feature — `listEvents` is
+read-only.
+
+---
+
 # AI Lead Categorization — Setup & How It Works
 
 This adds AI lead categorization to the Event Workspace (`index.html`). The
@@ -53,9 +99,9 @@ holding your "Randy" personas, and the Apps Script already calls Claude with the
 
 1. Open the Apps Script project bound to the sheet (**Extensions → Apps Script**).
 2. Replace the script with **`apps-script/Code.gs`** from this repo. It is your
-   existing script **unchanged**, plus one new `categorizeLeads` action — all six
-   original actions (`uploadFile`, `listFiles`, `deleteFile`, `analyzeDocument`,
-   `updateDescription`, `getConfig`) are byte-for-byte the same.
+   existing script **unchanged**, plus the new `categorizeLeads` and `listEvents`
+   actions — all six original actions (`uploadFile`, `listFiles`, `deleteFile`,
+   `analyzeDocument`, `updateDescription`, `getConfig`) are byte-for-byte the same.
 3. Confirm `ANTHROPIC_API_KEY` still exists under
    **Project Settings → Script properties**.
 

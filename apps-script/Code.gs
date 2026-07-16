@@ -1,14 +1,16 @@
 /**
  * Partner Portal — Event Workspace backend (Google Apps Script web app)
  * ---------------------------------------------------------------------
- * This is the existing web script with ONE additive capability bolted on:
- * a new `categorizeLeads` action that runs the "Event Lead Categorizer"
- * SaaS demand-gen persona over an uploaded contact list.
+ * This is the existing web script with TWO additive capabilities bolted on:
+ *   - `categorizeLeads` — runs the "Event Lead Categorizer" SaaS demand-gen
+ *     persona over an uploaded contact list.
+ *   - `listEvents` — returns the rows of the Events tab so the workspace can
+ *     show an event picker on load and prepopulate itself from the selection.
  *
  * NOTHING existing was changed. All original actions
  * (uploadFile / listFiles / deleteFile / analyzeDocument / updateDescription /
  * getConfig) behave exactly as before. The only edits are:
- *   1. a new `if (payload.action === 'categorizeLeads')` branch in doPost()
+ *   1. new `categorizeLeads` / `listEvents` branches in doPost()
  *   2. the new functions at the bottom of this file (clearly fenced)
  *
  * Deploy: Extensions > Apps Script > Deploy > New deployment > Web app
@@ -48,6 +50,12 @@ function doPost(e) {
     // NEW — classify an uploaded lead list with the SaaS demand-gen persona.
     if (payload.action === 'categorizeLeads') {
       return doCategorizeLeads(payload);
+    }
+
+    // NEW — return every row of the Events tab so the workspace can offer an
+    // event picker on load and prepopulate itself from the selected event.
+    if (payload.action === 'listEvents') {
+      return doListEvents();
     }
 
     if (payload.action === 'getConfig') {
@@ -478,6 +486,49 @@ function getCategorizerInstructions() {
 
 function jsonOut(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * doListEvents
+ * Reads the Events tab and returns each row as an object keyed by the header
+ * row (event_id, title, description, event_date, end_date, event_type,
+ * location, url, created_by, created_at, status, partner_id, checklist,
+ * lead_count). Values are passed through verbatim — nothing is inferred or
+ * rewritten — so the page can prepopulate with exactly what the sheet says.
+ * Dates that Sheets stores as real Date values are serialized as yyyy-MM-dd in
+ * the spreadsheet's own time zone; text dates (e.g. "11/19/2025") are returned
+ * as-is. Very long descriptions are capped to keep the payload light.
+ */
+function doListEvents() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName('Events');
+  if (!sheet || sheet.getLastRow() < 2) return jsonOut({ ok: true, events: [] });
+
+  var numCols = sheet.getLastColumn();
+  var headers = sheet.getRange(1, 1, 1, numCols).getValues()[0];
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols).getValues();
+  var tz = ss.getSpreadsheetTimeZone();
+
+  var events = [];
+  for (var i = 0; i < data.length; i++) {
+    var obj = {};
+    var empty = true;
+    for (var j = 0; j < headers.length; j++) {
+      var h = String(headers[j] || '').trim();
+      if (!h) continue;
+      var v = data[i][j];
+      if (v instanceof Date) v = Utilities.formatDate(v, tz, 'yyyy-MM-dd');
+      if (h === 'description' && typeof v === 'string' && v.length > 4000) {
+        v = v.substring(0, 4000) + '…';
+      }
+      if (v !== '' && v != null) empty = false;
+      obj[h] = v;
+    }
+    // Skip fully blank rows and rows without a title — nothing to select.
+    if (empty || !String(obj.title || '').trim()) continue;
+    events.push(obj);
+  }
+  return jsonOut({ ok: true, events: events });
 }
 
 /**
