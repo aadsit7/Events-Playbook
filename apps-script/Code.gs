@@ -1,12 +1,17 @@
 /**
  * Partner Portal — Event Workspace backend (Google Apps Script web app)
  * ---------------------------------------------------------------------
- * This is the existing web script with THREE additive capabilities bolted on:
+ * This is the existing web script with additive capabilities bolted on:
  *   - `categorizeLeads` — runs the "Event Lead Categorizer" SaaS demand-gen
  *     persona over an uploaded contact list.
  *   - `listEvents` — returns the non-completed rows of the Events tab as a
  *     minimal picker payload (no descriptions, no passwords) so the workspace
- *     can show its mandatory event dropdown on load.
+ *     can offer a "browse all events" fallback picker.
+ *   - `findEventsByPassword` — takes a password the user typed and returns the
+ *     minimal picker payload for every non-completed event whose password
+ *     matches it (exact match after trimming). This powers the password-first
+ *     gate: the user enters a password and we hand back only the event(s) it
+ *     unlocks. No passwords are ever returned; an empty password matches nothing.
  *   - `openEvent` — verifies the selected event's password (the `password`
  *     column of the Events tab) SERVER-SIDE and only then returns the full
  *     event row. The password never travels to the browser.
@@ -14,7 +19,8 @@
  * NOTHING existing was changed. All original actions
  * (uploadFile / listFiles / deleteFile / analyzeDocument / updateDescription /
  * getConfig) behave exactly as before. The only edits are:
- *   1. new `categorizeLeads` / `listEvents` / `openEvent` branches in doPost()
+ *   1. new `categorizeLeads` / `listEvents` / `findEventsByPassword` /
+ *      `openEvent` branches in doPost()
  *   2. the new functions at the bottom of this file (clearly fenced)
  *
  * Deploy: Extensions > Apps Script > Deploy > New deployment > Web app
@@ -60,6 +66,12 @@ function doPost(e) {
     // event picker on load and prepopulate itself from the selected event.
     if (payload.action === 'listEvents') {
       return doListEvents();
+    }
+
+    // NEW — resolve a typed password to the event(s) it unlocks, so the gate
+    // can start with the password instead of an event dropdown.
+    if (payload.action === 'findEventsByPassword') {
+      return doFindEventsByPassword(payload);
     }
 
     // NEW — open one event by key, verifying its password (if the Events tab
@@ -623,6 +635,46 @@ function doListEvents() {
       location: r.location || '',
       status: r.status || '',
       has_password: eventPasswordOf(r) !== ''
+    });
+  }
+  return jsonOut({ ok: true, events: events });
+}
+
+/**
+ * doFindEventsByPassword
+ * Input payload: { action:'findEventsByPassword', password:'<user input>' }
+ * Returns the SAME minimal picker payload as listEvents, but only for the
+ * non-completed events whose password matches the supplied value (exact match
+ * after trimming — the identical comparison openEvent uses). This powers the
+ * password-first gate: the user types a password and we hand back only the
+ * event(s) it unlocks, so a single match can open straight away and several
+ * events sharing one password can be listed for the user to choose from.
+ *
+ * Security: passwords themselves are NEVER returned (only matched titles/dates,
+ * which the user has already proven they may see by knowing the password). An
+ * empty/blank password matches nothing — password-less events are reached via
+ * the listEvents "browse all" fallback, not by submitting an empty password.
+ */
+function doFindEventsByPassword(payload) {
+  var given = String(payload.password == null ? '' : payload.password).trim();
+  if (given === '') {
+    return jsonOut({ ok: true, events: [] });
+  }
+  var rows = readEventRows();
+  var events = [];
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    if (isCompletedEvent(r)) continue;
+    if (eventPasswordOf(r) !== given) continue;
+    events.push({
+      key: eventKeyOf(r),
+      title: r.title,
+      event_date: r.event_date || '',
+      end_date: r.end_date || '',
+      event_type: r.event_type || '',
+      location: r.location || '',
+      status: r.status || '',
+      has_password: true
     });
   }
   return jsonOut({ ok: true, events: events });
