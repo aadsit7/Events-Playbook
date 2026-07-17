@@ -302,6 +302,20 @@ tbody tr:hover{background:var(--surface-hover)}
 .gate__err svg{width:15px;height:15px;flex-shrink:0}
 .gate__actions{display:flex;justify-content:flex-end;padding-top:2px}
 .gate__actions .btn[disabled]{opacity:.55;cursor:default}
+.gate input[type=text]{width:100%;font-family:var(--font);font-size:14px;color:var(--ink);background:#fff;border:1px solid var(--border);border-radius:var(--r-md);padding:11px 13px}
+.gate input[type=text]:focus{outline:none;border-color:var(--primary);box-shadow:var(--ring)}
+/* password-first gate: link-style toggle + the clickable list shown when one
+   password unlocks several events */
+.gate__link{align-self:flex-start;background:none;border:0;padding:2px 0;margin:0;font-family:var(--font);font-size:12.5px;font-weight:600;color:var(--primary);cursor:pointer}
+.gate__link:hover{color:var(--primary-dark);text-decoration:underline}
+.gate__matches{display:flex;flex-direction:column;gap:8px}
+.gate__matches-lead{font-size:12.5px;color:var(--muted);margin-bottom:2px}
+.gate__match{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;font-family:var(--font);background:#fff;border:1px solid var(--border);border-radius:var(--r-md);padding:11px 13px;cursor:pointer;transition:all .12s}
+.gate__match:hover{border-color:var(--primary);background:var(--surface-hover);box-shadow:var(--ring)}
+.gate__match:disabled{opacity:.6;cursor:default}
+.gate__match-title{font-size:14px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:7px}
+.gate__match-title .spin{border-color:rgba(47,107,255,.25);border-top-color:var(--primary)}
+.gate__match-meta{font-size:12px;color:var(--muted)}
 .modal-spin{display:flex;flex-direction:column;align-items:center;gap:12px;padding:44px 16px;color:var(--muted);font-size:13.5px}
 .modal-spin .spin{width:22px;height:22px;border-width:3px;border-color:rgba(47,107,255,.25);border-top-color:var(--primary)}
 .modal .empty{padding:36px 16px}
@@ -361,17 +375,20 @@ tbody tr:hover{background:var(--surface-hover)}
 <div id="toast"></div>
 
 <!-- ===== Event gate (synced from the Events tab) =====
-     Mandatory on open: pick an event from the dropdown, enter its password if
-     it has one, and only then does the workspace open — showing only that
-     event. Completed events are filtered out by the backend and never appear. -->
+     Mandatory on open, password-first: the user types the event password and we
+     resolve it to the event(s) it unlocks. One match opens straight away; when
+     several events share a password the user picks the right one. A "Browse all
+     events" fallback still lists every open event (the way password-less events
+     are reached). Only then does the workspace open — showing only that event.
+     Completed events are filtered out by the backend and never appear. -->
 <div class="modal-backdrop" id="event-modal" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-label="Select your event">
     <div class="modal__head">
       <div class="modal__title">
         <svg viewBox="0 0 20 20" fill="none"><rect x="3" y="4" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M3 9h14M7 2v4M13 2v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-        Select your event
+        Open your event
       </div>
-      <div class="modal__sub">Events sync live from the Events tab of the Partner Portal Google Sheet. Password-protected events (🔒) require the event password before their details open.</div>
+      <div class="modal__sub">Enter your event password to open it. If one password unlocks several events, you’ll pick the right one from the list.</div>
     </div>
     <div class="modal__body" id="event-modal-body"></div>
     <div class="modal__foot">
@@ -1443,19 +1460,26 @@ tbody tr:hover{background:var(--surface-hover)}
   }
 
   /* ================= EVENT GATE (Google Sheets) =================
-     The gate is the first — and mandatory — step. On open the page calls the
-     web script's `listEvents` action, which returns only the open (never
-     completed) rows of the Events tab as a minimal picker payload: title,
-     dates, type, location and a has_password flag. The user picks an event
-     from the dropdown; if that event has a password in the sheet they must
-     enter it. Only then does `openEvent` verify the password SERVER-SIDE and
-     release the full row, which prepopulates the workspace exactly as the
-     sheet has it — title, type, status, dates, location and description are
-     copied 1:1, and the playbook timeline is recomputed from the event's real
-     dates. The workspace stays hidden until that first unlock, so the page
-     only ever shows the selected event's details. Passwords never travel to
-     the browser. If the backend is unreachable the gate offers a retry. */
-  var sheetEvents=[];   // minimal picker entries from listEvents
+     The gate is the first — and mandatory — step, and it is PASSWORD-FIRST. On
+     open the page calls `listEvents` (open rows only, as a minimal picker
+     payload) purely to confirm there are events and to power the "Browse all
+     events" fallback. The user then simply types their event password: the page
+     calls `findEventsByPassword`, which returns only the event(s) that password
+     unlocks. One match opens straight away; when several events share the same
+     password they are listed and the user clicks the right one. Either way the
+     chosen event goes through `openEvent`, which re-verifies the password
+     SERVER-SIDE and releases the full row, prepopulating the workspace exactly
+     as the sheet has it — title, type, status, dates, location and description
+     copied 1:1, playbook timeline recomputed from the event's real dates.
+     Password-less events (and anyone without a password) reach their event
+     through the "Browse all events" dropdown fallback, which keeps the original
+     select-then-open behaviour. The workspace stays hidden until that first
+     unlock, so the page only ever shows the selected event's details. Passwords
+     never travel back to the browser. If the backend is unreachable the gate
+     offers a retry. */
+  var sheetEvents=[];   // minimal picker entries from listEvents (browse fallback)
+  var matchedEvents=[]; // picker entries returned by findEventsByPassword
+  var gatePassword='';  // the password the user typed, reused to openEvent a match
   var unlocked=false;   // true after the first successful openEvent
   var gateBusy=false;
   function normalizePickerEvent(raw){
@@ -1511,13 +1535,20 @@ tbody tr:hover{background:var(--surface-hover)}
   function showEventModal(){el('event-modal').hidden=false;}
   function hideEventModal(){el('event-modal').hidden=true;}
   function modalBody(html){el('event-modal-body').innerHTML=html;showEventModal();}
+  function noEventsHTML(){
+    return '<div class="empty">No open events found in the Events tab of the sheet.<br><br><button class="btn js-modal-retry">Refresh</button></div>';
+  }
   function syncEvents(){
     if(!aiConfigured()){toast('Set CONFIG.webAppUrl to your Apps Script Web App URL to enable event sync');return;}
     modalBody('<div class="modal-spin"><span class="spin"></span>Syncing events from the Google Sheet…</div>');
     aiFetch({action:'listEvents'}).then(function(res){
       if(res&&res.ok&&res.events&&res.events.map){
         sheetEvents=res.events.map(normalizePickerEvent).filter(Boolean);
-        renderGate();
+        // Password-first: the list is only used to confirm events exist and to
+        // power the "Browse all events" fallback — the user opens their event by
+        // typing its password.
+        if(!sheetEvents.length){modalBody(noEventsHTML());return;}
+        renderPwGate();
       } else {
         modalBody(syncErrHTML(res&&res.error));
       }
@@ -1526,14 +1557,51 @@ tbody tr:hover{background:var(--surface-hover)}
   function syncErrHTML(err){
     return '<div class="empty">Could not load events from the Google Sheet'
       +(err?(' — '+esc(String(err))):'')
-      +'.<br>Make sure the web script is redeployed with the <b>listEvents</b> and <b>openEvent</b> actions.'
+      +'.<br>Make sure the web script is redeployed with the <b>listEvents</b>, <b>findEventsByPassword</b> and <b>openEvent</b> actions.'
       +'<br><br><button class="btn js-modal-retry">Try again</button></div>';
   }
-  function renderGate(){
-    if(!sheetEvents.length){
-      modalBody('<div class="empty">No open events found in the Events tab of the sheet.<br><br><button class="btn js-modal-retry">Refresh</button></div>');
-      return;
-    }
+  // PASSWORD-FIRST gate: a single line for the event password. Submitting it
+  // resolves to the event(s) that password unlocks (see findByPassword).
+  function renderPwGate(){
+    matchedEvents=[]; gatePassword='';
+    modalBody(
+      '<div class="gate">'
+      +'<div><label class="gate__label" for="gate-pw">Event password</label>'
+      +'<input type="password" id="gate-pw" placeholder="Enter your event password" autocomplete="off">'
+      +'<div class="gate__meta">We’ll open the event this password unlocks. If it unlocks more than one, you’ll pick from a list.</div></div>'
+      +'<div class="gate__err" id="gate-err" hidden></div>'
+      +'<div class="gate__actions"><button type="button" class="btn btn--primary js-gate-find">Open event</button></div>'
+      +'<button type="button" class="gate__link js-gate-browse">Browse all events instead</button>'
+      +'</div>'
+    );
+    var p=el('gate-pw'); if(p) p.focus();
+  }
+  // Shown when one password unlocks several events: list them so the user can
+  // click the right one. The typed password is reused (gatePassword) to open it.
+  function renderMatches(){
+    var items=matchedEvents.map(function(e,i){
+      var meta=[e.type,fmtRange(e.start,e.end),e.location].filter(Boolean).join(' · ');
+      return '<button type="button" class="gate__match js-gate-pick" data-idx="'+i+'">'
+        +'<span class="gate__match-title">'+esc(e.title)+'</span>'
+        +(meta?'<span class="gate__match-meta">'+esc(meta)+'</span>':'')
+        +'</button>';
+    }).join('');
+    modalBody(
+      '<div class="gate">'
+      +'<div class="gate__matches">'
+      +'<div class="gate__matches-lead">'+esc(matchedEvents.length+' events use this password — open the one you want.')+'</div>'
+      +items
+      +'</div>'
+      +'<div class="gate__err" id="gate-err" hidden></div>'
+      +'<button type="button" class="gate__link js-gate-back">← Enter a different password</button>'
+      +'</div>'
+    );
+  }
+  // Fallback picker: the original select-then-open flow. This is how password-
+  // less events (and anyone who would rather browse) reach their event.
+  function renderBrowseGate(){
+    matchedEvents=[]; gatePassword='';
+    if(!sheetEvents.length){modalBody(noEventsHTML());return;}
     var groups={live:[],upcoming:[],past:[],cancelled:[]};
     sheetEvents.forEach(function(e,i){e._idx=i;groups[groupOf(e)].push(e);});
     function ts(e){return e.start?e.start.getTime():0;}
@@ -1557,6 +1625,7 @@ tbody tr:hover{background:var(--surface-hover)}
       +'<input type="password" id="gate-pw" placeholder="Enter the password for this event" autocomplete="off"></div>'
       +'<div class="gate__err" id="gate-err" hidden></div>'
       +'<div class="gate__actions"><button class="btn btn--primary js-gate-open" disabled>Open event</button></div>'
+      +'<button type="button" class="gate__link js-gate-pwfirst">← Back to password entry</button>'
       +'</div>'
     );
   }
@@ -1572,6 +1641,7 @@ tbody tr:hover{background:var(--surface-hover)}
       e.hidden=false;
     } else e.hidden=true;
   }
+  // Browse-mode only: reveal the password row + preview line for the dropdown.
   function updateGateUI(){
     var ev=gateSelected();
     var pwRow=el('gate-pw-row'),btn=document.querySelector('.js-gate-open'),meta=el('gate-meta');
@@ -1584,28 +1654,20 @@ tbody tr:hover{background:var(--surface-hover)}
     if(meta) meta.textContent=ev?[ev.type,fmtRange(ev.start,ev.end),ev.location,(ev.hasPassword?'Password protected':null)].filter(Boolean).join(' · '):'';
     gateError('');
   }
-  function gateFail(msg){
-    var btn=document.querySelector('.js-gate-open');
-    if(btn){btn.disabled=!gateSelected();btn.innerHTML='Open event';}
-    gateError(msg);
+  function restoreFindBtn(){
+    var btn=document.querySelector('.js-gate-find');
+    if(btn){btn.disabled=false;btn.innerHTML='Open event';}
   }
-  function openSelectedEvent(){
-    if(gateBusy) return;
-    var ev=gateSelected(); if(!ev) return;
-    var pw='';
-    if(ev.hasPassword){
-      var p=el('gate-pw');
-      pw=p?p.value.trim():'';
-      if(!pw){gateError('This event is password protected — enter its password to open it.');if(p)p.focus();return;}
-    }
+  // Shared open: hand a key + password to `openEvent`, which re-verifies the
+  // password SERVER-SIDE and releases the full row. onFail(msg,code) restores
+  // whichever gate view is showing. Used by all three entry points below.
+  function openEventByKey(key,password,onFail){
     gateBusy=true;
-    var btn=document.querySelector('.js-gate-open');
-    if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>Opening…';}
-    aiFetch({action:'openEvent',eventKey:ev.key,password:pw}).then(function(res){
+    aiFetch({action:'openEvent',eventKey:key,password:password}).then(function(res){
       gateBusy=false;
       if(res&&res.ok&&res.event){
         var full=normalizeEvent(res.event);
-        if(!full){gateFail('The event could not be loaded — try again.');return;}
+        if(!full){onFail('The event could not be loaded — try again.');return;}
         hideEventModal();
         applyEvent(full);
         if(!unlocked){
@@ -1615,17 +1677,87 @@ tbody tr:hover{background:var(--surface-hover)}
         }
         return;
       }
-      // The list is stale (row removed or since completed) — refresh the gate.
+      // The event is stale (row removed or since completed) — back to the gate.
       if(res&&(res.code==='not_found'||res.code==='completed')){
         toast(res.error||'That event is no longer available');
         syncEvents();
         return;
       }
-      gateFail((res&&res.error)||'Could not open the event — try again.');
-      if(res&&res.code==='bad_password'){var pi=el('gate-pw');if(pi){pi.focus();pi.select();}}
+      onFail((res&&res.error)||'Could not open the event — try again.',res&&res.code);
     }).catch(function(){
       gateBusy=false;
-      gateFail('Could not reach the Google Sheet — check your connection and try again.');
+      onFail('Could not reach the Google Sheet — check your connection and try again.');
+    });
+  }
+  // PASSWORD-FIRST entry: resolve the typed password to its event(s).
+  function findByPassword(){
+    if(gateBusy) return;
+    var p=el('gate-pw');
+    var pw=p?p.value.trim():'';
+    if(!pw){gateError('Enter your event password to open your event.');if(p)p.focus();return;}
+    gateBusy=true; gatePassword=pw;
+    var btn=document.querySelector('.js-gate-find');
+    if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>Finding…';}
+    aiFetch({action:'findEventsByPassword',password:pw}).then(function(res){
+      if(res&&res.ok&&res.events&&res.events.map){
+        matchedEvents=res.events.map(normalizePickerEvent).filter(Boolean);
+        if(!matchedEvents.length){
+          gateBusy=false; gatePassword=''; restoreFindBtn();
+          gateError('No event matches that password. Check it and try again, or browse all events.');
+          if(p){p.focus();p.select();}
+          return;
+        }
+        if(matchedEvents.length===1){
+          // Exactly one event — open it straight away (button stays working).
+          if(btn) btn.innerHTML='<span class="spin"></span>Opening…';
+          openEventByKey(matchedEvents[0].key,gatePassword,function(msg){
+            gatePassword=''; restoreFindBtn(); gateError(msg);
+            var pi=el('gate-pw'); if(pi){pi.focus();pi.select();}
+          });
+          return;
+        }
+        // Several events share this password — let the user choose.
+        gateBusy=false;
+        renderMatches();
+        return;
+      }
+      gateBusy=false; gatePassword=''; restoreFindBtn();
+      gateError((res&&res.error)||'Could not check that password — try again.');
+    }).catch(function(){
+      gateBusy=false; gatePassword=''; restoreFindBtn();
+      gateError('Could not reach the Google Sheet — check your connection and try again.');
+    });
+  }
+  // A click on one of the events a shared password unlocked.
+  function openMatchedEvent(idx){
+    if(gateBusy) return;
+    var ev=matchedEvents[idx]; if(!ev) return;
+    var picks=document.querySelectorAll('.js-gate-pick');
+    for(var i=0;i<picks.length;i++) picks[i].disabled=true;
+    var t=picks[idx]&&picks[idx].querySelector('.gate__match-title');
+    if(t) t.innerHTML='<span class="spin"></span>'+esc(ev.title);
+    openEventByKey(ev.key,gatePassword,function(msg){
+      // Rebuild the list (re-enabling every card) and surface the error.
+      renderMatches();
+      gateError(msg);
+    });
+  }
+  // BROWSE-MODE entry: open whatever is selected in the dropdown fallback.
+  function openSelectedEvent(){
+    if(gateBusy) return;
+    var ev=gateSelected(); if(!ev) return;
+    var pw='';
+    if(ev.hasPassword){
+      var p=el('gate-pw');
+      pw=p?p.value.trim():'';
+      if(!pw){gateError('This event is password protected — enter its password to open it.');if(p)p.focus();return;}
+    }
+    var btn=document.querySelector('.js-gate-open');
+    if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>Opening…';}
+    openEventByKey(ev.key,pw,function(msg,code){
+      if(btn){btn.disabled=!gateSelected();btn.innerHTML='Open event';}
+      gateError(msg);
+      if(code==='bad_password'){var pi=el('gate-pw');if(pi){pi.focus();pi.select();}}
     });
   }
   function applyEvent(ev){
@@ -1653,7 +1785,12 @@ tbody tr:hover{background:var(--surface-hover)}
       return;
     }
     if(e.target.closest('.js-modal-retry')){syncEvents();return;}
-    if(e.target.closest('.js-gate-open')){openSelectedEvent();return;}
+    if(e.target.closest('.js-gate-find')){findByPassword();return;}   // password-first submit
+    var pick=e.target.closest('.js-gate-pick');
+    if(pick){openMatchedEvent(Number(pick.getAttribute('data-idx')));return;}  // pick from shared-password list
+    if(e.target.closest('.js-gate-browse')){renderBrowseGate();return;}   // → dropdown fallback
+    if(e.target.closest('.js-gate-back')||e.target.closest('.js-gate-pwfirst')){renderPwGate();return;}  // ← password entry
+    if(e.target.closest('.js-gate-open')){openSelectedEvent();return;}   // browse-mode submit
   });
   el('event-modal').addEventListener('change',function(e){
     if(e.target.id==='gate-select') updateGateUI();
@@ -1662,9 +1799,15 @@ tbody tr:hover{background:var(--surface-hover)}
     if(e.target.id==='gate-pw') gateError('');
   });
   el('event-modal').addEventListener('keydown',function(e){
-    if(e.key==='Enter'&&(e.target.id==='gate-pw'||e.target.id==='gate-select')){
-      e.preventDefault();openSelectedEvent();
+    if(e.key!=='Enter') return;
+    if(e.target.id==='gate-pw'){
+      e.preventDefault();
+      // Same field id in both gates — route Enter by whichever is on screen.
+      if(document.querySelector('.js-gate-find')) findByPassword();
+      else openSelectedEvent();
+      return;
     }
+    if(e.target.id==='gate-select'){e.preventDefault();openSelectedEvent();}
   });
 
   /* ================= init ================= */
@@ -1673,8 +1816,9 @@ tbody tr:hover{background:var(--surface-hover)}
   renderContacts();
   renderPlaybook();
   if(aiConfigured()){
-    // First and mandatory step on open: pick an event from the dropdown (and
-    // enter its password if it has one). The workspace stays hidden until then.
+    // First and mandatory step on open: enter the event password (or use
+    // "Browse all events" to pick from the list). The workspace stays hidden
+    // until an event is opened.
     syncEvents();
   } else {
     // No backend configured — nothing to gate; open the demo workspace directly.
