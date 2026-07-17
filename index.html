@@ -1253,6 +1253,46 @@ tbody tr:hover{background:var(--surface-hover)}
     if(s.indexOf('individual')>=0||s.indexOf('contributor')>=0) return 'Individual';
     return null;
   }
+  // Realign one batch's AI results to the exact contacts we sent it. Each result
+  // is matched back to a contact by the opaque `index` token the model is told to
+  // echo (e.g. "u37"). Models don't always transcribe that token perfectly across
+  // a whole batch: a common slip is renumbering per batch (restarting at 0, or
+  // emitting a bare number), which would land batch N's classifications onto the
+  // WRONG contacts from an earlier batch. We sent this batch in a known order, so
+  // we can recover the true index by position. Accuracy-first: a result either
+  // lands on its real contact or is left to the local heuristic — never on
+  // someone else's row.
+  function reconcileBatchResults(slice,results){
+    if(!results||!results.length) return results||[];
+    // Tally what we actually sent, then inspect the echoed indices.
+    var want={}; slice.forEach(function(c){want[String(c.id)]=(want[String(c.id)]||0)+1;});
+    var seen={}, allKnown=true, dup=false;
+    for(var i=0;i<results.length;i++){
+      var r=results[i], k=(r&&r.index!=null)?String(r.index):null;
+      if(k==null||!want[k]){allKnown=false;break;}   // an index we never sent
+      seen[k]=(seen[k]||0)+1; if(seen[k]>want[k]) dup=true;
+    }
+    // (1) Every echoed index is a distinct contact from THIS batch: the labels
+    // are trustworthy. Covers an exact permutation (even reordered) and a clean
+    // partial (the model dropped some leads but labeled the rest correctly) —
+    // each result maps to its own contact; any omitted lead keeps the heuristic.
+    if(allKnown && !dup) return results;
+    // (2) Exactly one object per lead but the labels are garbled (renumbered per
+    // batch, emitted as bare numbers, …). The model was told to keep input
+    // order, so position is authoritative — restamp each result with the contact
+    // id we sent for that position. This is the common failure the whole app
+    // hinged on: without it, a later batch's classifications overwrite earlier
+    // contacts and every row can come up wrong.
+    if(results.length===slice.length){
+      for(var j=0;j<results.length;j++){ if(results[j]&&typeof results[j]==='object') results[j].index=slice[j].id; }
+      return results;
+    }
+    // (3) Neither signal is safe (count mismatch AND unrecognized/duplicated
+    // labels): we cannot know which result belongs to which contact. Drop the
+    // batch and let the local title heuristic stand — classifying nothing beats
+    // classifying the wrong person.
+    return [];
+  }
   function applyAIResults(results){
     var byId={}; state.contacts.forEach(function(c){byId[c.id]=c;});
     results.forEach(function(r){
@@ -1283,7 +1323,7 @@ tbody tr:hover{background:var(--surface-hover)}
       });
       return aiFetch({action:'categorizeLeads', leads:leads}).then(function(res){
         if(myRun!==aiRun) return;     // stale response — never write onto a newer list
-        if(res && res.ok && res.results && res.results.length){ applyAIResults(res.results); done+=slice.length; }
+        if(res && res.ok && res.results && res.results.length){ applyAIResults(reconcileBatchResults(slice,res.results)); done+=slice.length; }
         else if(attempt<AI_RETRIES){ return sendBatch(slice,attempt+1); }
         else { failed+=slice.length; }
       }).catch(function(){
