@@ -239,43 +239,40 @@ tbody tr:hover{background:var(--surface-hover)}
 .cbox{width:18px;height:18px;border-radius:6px;border:2px solid var(--border);flex-shrink:0;display:grid;place-items:center;transition:all .15s}
 .cbox svg{width:11px;height:11px;opacity:0;transform:scale(.5);transition:all .15s;color:#fff}
 .clabel{font-size:13.5px}
-.citem--done .cbox{background:var(--teal);border-color:var(--teal)}
+.citem--done .cbox{background:var(--blue);border-color:var(--blue)}
 .citem--done .cbox svg{opacity:1;transform:scale(1)}
 .citem--done .clabel{color:var(--muted);text-decoration:line-through}
 
 /* helper banner + numbered zone headers */
 .pb-help{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text);background:var(--card);border:none;border-radius:var(--radius-card);padding:12px 16px;margin-bottom:22px}
 .pb-help svg{width:18px;height:18px;color:var(--primary);flex-shrink:0}
-.zone{display:flex;align-items:center;gap:10px;margin:4px 0 12px}
-.zone__num{width:24px;height:24px;border-radius:var(--r-full);display:grid;place-items:center;font-family:var(--display);font-size:12px;font-weight:700;color:#fff;flex-shrink:0}
-.zone__t{font-family:var(--display);font-weight:700;font-size:15px}
-.zone__s{font-family:var(--font);font-weight:500;font-size:12px;color:var(--muted)}
-.zone--1 .zone__num{background:var(--primary)}
-.zone--2 .zone__num{background:var(--teal)}
-.zone--3 .zone__num{background:var(--warning)}
+.zone{display:flex;align-items:center;gap:12px;margin:8px 0 16px}
+.zone__num{width:40px;height:40px;border-radius:var(--radius-tile);background:var(--blue);display:grid;place-items:center;font-family:var(--display);font-size:17px;font-weight:700;color:#fff;flex-shrink:0}
+.zone__t{font-family:var(--display);font-weight:700;font-size:24px;letter-spacing:-.01em;color:var(--ink)}
+.zone__s{font-family:var(--font);font-weight:400;font-size:13px;color:var(--gray-light);letter-spacing:0}
 
 /* vertical timeline */
 .tl{position:relative}
 .tl__item{display:grid;grid-template-columns:94px 30px 1fr;padding-bottom:12px}
 .tl__meta{text-align:right;padding-top:12px;padding-right:2px}
 .tl__rel{display:block;font-size:12.5px;font-weight:700;line-height:1.2}
-.tl__date{display:block;font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:2px}
+.tl__date{display:block;font-size:12px;color:var(--gray-light);margin-top:2px}
 .tl__node{position:relative}
 .tl__node::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:2px;transform:translateX(-50%);background:var(--border)}
 .tl__item:first-child .tl__node::before{top:18px}
 .tl__item:last-child .tl__node::before{bottom:auto;height:18px}
 .tl__dot{position:absolute;left:50%;top:18px;transform:translate(-50%,-50%);width:12px;height:12px;border-radius:var(--r-full);border:2.5px solid #fff;z-index:1;box-shadow:0 0 0 2px currentColor}
-.tl--leadup .tl__rel{color:var(--primary)}
-.tl--leadup .tl__dot{background:var(--primary);color:var(--primary)}
-.tl--followup .tl__rel{color:var(--warning)}
-.tl--followup .tl__dot{background:var(--warning);color:var(--warning)}
+.tl--leadup .tl__rel{color:var(--blue)}
+.tl--leadup .tl__dot{background:var(--blue);color:var(--blue)}
+.tl--followup .tl__rel{color:var(--blue)}
+.tl--followup .tl__dot{background:var(--blue);color:var(--blue)}
 .tl__card{background:var(--card);border:none;border-radius:var(--radius-card);box-shadow:none;padding:14px 16px}
 .tl__title{font-weight:600;font-size:14px;display:flex;justify-content:space-between;align-items:center;gap:10px}
-.tl__count{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap}
+.tl__count{font-size:12px;color:var(--gray-light);white-space:nowrap;font-variant-numeric:tabular-nums}
 .mini-bar{height:4px;background:var(--border-light);border-radius:var(--r-full);margin:8px 0 2px;overflow:hidden}
 .mini-bar__fill{height:100%;border-radius:var(--r-full);transition:width .3s}
-.tl--leadup .mini-bar__fill{background:var(--primary)}
-.tl--followup .mini-bar__fill{background:var(--warning)}
+.tl--leadup .mini-bar__fill{background:var(--blue)}
+.tl--followup .mini-bar__fill{background:var(--blue)}
 
 /* down-flow arrow between sections */
 .flow{display:flex;justify-content:center;color:var(--hairline);margin:0 0 10px}
@@ -287,18 +284,18 @@ tbody tr:hover{background:var(--surface-hover)}
 .anchor--results{background:var(--card);border:none}
 .anchor__row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .anchor__badge{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:700;padding:5px 12px;border-radius:var(--r-full);color:#fff}
-.anchor--event .anchor__badge{background:var(--teal)}
-.anchor--results .anchor__badge{background:var(--primary)}
-.anchor__when{font-family:var(--display);font-weight:700;font-size:14.5px}
-.anchor--event .anchor__when{color:var(--teal-deep)}
-.anchor--results .anchor__when{color:var(--primary-dark)}
+.anchor--event .anchor__badge{background:var(--blue)}
+.anchor--results .anchor__badge{background:var(--blue)}
+.anchor__when{font-family:var(--display);font-weight:700;font-size:15px}
+.anchor--event .anchor__when{color:var(--ink)}
+.anchor--results .anchor__when{color:var(--ink)}
 .anchor__title{font-weight:600;font-size:14px;margin:13px 0 3px}
 .rmetrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:6px}
 .rmetric{background:#fff;border:none;border-radius:var(--radius-card);padding:16px;text-align:center}
-.rmetric__n{font-family:var(--display);font-weight:700;font-size:26px;letter-spacing:-.02em;color:var(--primary);line-height:1}
-.rmetric__l{font-size:11.5px;color:var(--muted);margin-top:4px}
+.rmetric__n{font-family:var(--display);font-weight:700;font-size:30px;letter-spacing:-.015em;color:var(--ink);line-height:1}
+.rmetric__l{font-size:12px;color:var(--gray-light);margin-top:5px}
 .rnote{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-top:13px}
-.rnote svg{width:14px;height:14px;color:var(--teal);flex-shrink:0}
+.rnote svg{width:14px;height:14px;color:var(--blue);flex-shrink:0}
 @media(max-width:900px){
   .tl__item{grid-template-columns:74px 26px 1fr}
   .rmetrics{grid-template-columns:1fr}
@@ -903,7 +900,7 @@ tbody tr:hover{background:var(--surface-hover)}
 
     var head=''
       +'<div class="pbhead">'
-      +'  <div><div style="font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Event type</div><div class="typebar">'+typebar+'</div></div>'
+      +'  <div><div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gray-light);margin-bottom:8px">Event type</div><div class="typebar">'+typebar+'</div></div>'
       +'  <div class="pbring"><div class="pbring__meta"><b>'+st.done+' / '+st.total+'</b>tasks complete</div>'
       +'    <div class="ring"><svg width="64" height="64"><circle cx="32" cy="32" r="26" stroke="var(--border-light)" stroke-width="7" fill="none"/>'
       +'      <circle cx="32" cy="32" r="26" stroke="var(--primary)" stroke-width="7" fill="none" stroke-linecap="round" stroke-dasharray="163.4" stroke-dashoffset="'+(163.4*(1-st.pct/100)).toFixed(1)+'"/></svg>'
@@ -951,7 +948,7 @@ tbody tr:hover{background:var(--surface-hover)}
       +'<div class="anchor__row"><span class="anchor__badge"><svg viewBox="0 0 16 16" width="14" height="14" fill="none"><path d="M8 1.4l1.85 3.75 4.15.6-3 2.92.71 4.13L8 10.95 4.29 12.8 5 8.67l-3-2.92 4.15-.6L8 1.4z" fill="currentColor"/></svg>The event</span>'
       +'<span class="anchor__when">'+esc([fmtRange(state.event.start,state.event.end),state.event.location].filter(Boolean).join(' · ')||'Date TBD')+'</span></div>'
       +'<div class="anchor__title">Execute on-site <span class="tl__count" style="font-weight:400;margin-left:6px">'+p.d+'/'+p.t+' done</span></div>'
-      +'<div class="mini-bar"><div class="mini-bar__fill" style="width:'+p.pct+'%;background:var(--teal)"></div></div>'
+      +'<div class="mini-bar"><div class="mini-bar__fill" style="width:'+p.pct+'%;background:var(--blue)"></div></div>'
       +'<div class="clist">'+checklist('at_event',items)+'</div>'
       +'</div>';
   }
