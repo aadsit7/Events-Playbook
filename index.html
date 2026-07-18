@@ -9,6 +9,32 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Poppins:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <style>
+/* ===== Apple-inspired design tokens (single source of truth) =====
+   The legacy :root block below still overrides --ink / --bg / --teal so the
+   page renders unchanged for now; those overrides are removed layer by layer
+   as the restyle lands (R2 typography/background, R3 components). */
+:root{
+  /* Neutrals */
+  --ink: #1D1D1F;          /* primary text, headlines */
+  --gray: #6E6E73;         /* body & secondary text */
+  --gray-light: #86868B;   /* captions, footers, labels */
+  --hairline: #D2D2D7;     /* 1px dividers only */
+  --card: #F5F5F7;         /* card & section backgrounds */
+  --bg: #FFFFFF;           /* page background — always white */
+
+  /* Accents (use ONE per view as the primary accent) */
+  --blue: #007AFF;   --green: #34C759;  --orange: #FF9500;
+  --purple: #AF52DE; --indigo: #5856D6; --teal: #30B0C7;
+  --pink: #FF2D55;
+
+  /* Shape & space */
+  --radius-card: 14px;
+  --radius-tile: 24%;      /* icon tiles */
+  --radius-pill: 980px;    /* buttons */
+  --space-1: 8px; --space-2: 16px; --space-3: 24px;
+  --space-4: 40px; --space-5: 64px; --space-6: 96px;
+  --content-max: 1024px;
+}
 :root{
   --primary:#2F6BFF; --primary-dark:#2456D4; --primary-soft:#6B93FF;
   --teal:#0A8F82; --teal-deep:#076B60; --teal-soft:#59C3B6;
