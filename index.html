@@ -4,9 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Event Workspace — Preview</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Poppins:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <style>
 /* ===== Apple-inspired design tokens (single source of truth) =====
@@ -35,16 +32,18 @@
   --space-4: 40px; --space-5: 64px; --space-6: 96px;
   --content-max: 1024px;
 }
+/* Legacy aliases — remapped onto the spec tokens above as the restyle lands.
+   R2: type + background (--bg, --ink, --text, --muted, font stacks). */
 :root{
   --primary:#2F6BFF; --primary-dark:#2456D4; --primary-soft:#6B93FF;
   --teal:#0A8F82; --teal-deep:#076B60; --teal-soft:#59C3B6;
   --warning:#B97A1A; --danger:#EF4E5B;
-  --bg:#F4F6FB; --surface:#FFFFFF; --surface-hover:#F7F9FD;
-  --ink:#171D2B; --text:#4A5468; --muted:#8A93A8;
+  --surface:#FFFFFF; --surface-hover:#F7F9FD;
+  --text:var(--gray); --muted:var(--gray-light);
   --border:#DCE1EC; --border-light:#E8ECF5;
-  --font:'Figtree',system-ui,-apple-system,sans-serif;
-  --display:'Poppins','Figtree',system-ui,sans-serif;
-  --mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --display:var(--font);
+  --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
   --r-sm:8px; --r-md:12px; --r-lg:16px; --r-xl:20px; --r-full:999px;
   --shadow:0 2px 6px rgba(38,54,89,.06),0 1px 2px rgba(38,54,89,.04);
   --shadow-lg:0 14px 32px rgba(38,54,89,.12),0 4px 8px rgba(38,54,89,.05);
@@ -60,7 +59,7 @@ button{font-family:inherit}
 .topbar{height:58px;background:rgba(255,255,255,.85);backdrop-filter:saturate(160%) blur(14px);
   border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 24px;position:sticky;top:0;z-index:20}
 .brand{display:flex;align-items:center;gap:10px}
-.brand__mark{width:32px;height:32px;border-radius:9px;background:var(--primary);color:#fff;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:14px}
+.brand__mark{width:32px;height:32px;border-radius:9px;background:var(--primary);color:#fff;display:grid;place-items:center;font-family:var(--display);font-weight:700;font-size:14px}
 .brand__name{font-family:var(--display);font-weight:700;font-size:15px}
 .brand__sep{color:var(--border);font-size:18px}
 .brand__ctx{font-size:13px;color:var(--muted);font-weight:500}
@@ -80,7 +79,7 @@ button{font-family:inherit}
 
 /* ---------- Event header ---------- */
 .ehead{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;margin-bottom:20px}
-.ehead__title{font-family:var(--display);font-weight:800;font-size:28px;letter-spacing:-.02em;line-height:1.1}
+.ehead__title{font-family:var(--display);font-weight:700;font-size:40px;letter-spacing:-.015em;line-height:1.1;color:var(--ink)}
 .ehead__meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:12px;color:var(--text);font-size:13.5px}
 .ehead__meta svg{width:15px;height:15px;vertical-align:-2px;margin-right:5px;color:var(--muted)}
 .ehead__meta .dot{color:var(--border)}
@@ -123,7 +122,7 @@ button{font-family:inherit}
 .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:16px 18px}
 .kpi__label{font-size:12px;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:7px}
 .kpi__label svg{width:15px;height:15px}
-.kpi__num{font-family:var(--display);font-weight:800;font-size:30px;letter-spacing:-.02em;margin-top:8px;line-height:1}
+.kpi__num{font-family:var(--display);font-weight:700;font-size:30px;letter-spacing:-.02em;margin-top:8px;line-height:1}
 .kpi__foot{font-size:11.5px;color:var(--muted);margin-top:6px}
 .kpi__foot b{color:var(--teal);font-weight:700}
 
@@ -147,7 +146,7 @@ button{font-family:inherit}
 .donut-wrap{display:flex;align-items:center;gap:16px;margin-top:14px}
 .donut{position:relative;flex-shrink:0}
 .donut__center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.donut__num{font-family:var(--display);font-weight:800;font-size:22px;line-height:1}
+.donut__num{font-family:var(--display);font-weight:700;font-size:22px;line-height:1}
 .donut__cap{font-size:10px;color:var(--muted);font-family:var(--mono);letter-spacing:.03em}
 .legend{display:flex;flex-direction:column;gap:8px;flex:1;min-width:0}
 .legend__row{display:flex;align-items:center;gap:8px;font-size:12.5px}
@@ -243,7 +242,7 @@ tbody tr:hover{background:var(--surface-hover)}
 .pb-help{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text);background:#EAF0FF;border:1px solid #D6E2FF;border-radius:var(--r-md);padding:11px 14px;margin-bottom:22px}
 .pb-help svg{width:18px;height:18px;color:var(--primary);flex-shrink:0}
 .zone{display:flex;align-items:center;gap:10px;margin:4px 0 12px}
-.zone__num{width:24px;height:24px;border-radius:var(--r-full);display:grid;place-items:center;font-family:var(--display);font-size:12px;font-weight:800;color:#fff;flex-shrink:0}
+.zone__num{width:24px;height:24px;border-radius:var(--r-full);display:grid;place-items:center;font-family:var(--display);font-size:12px;font-weight:700;color:#fff;flex-shrink:0}
 .zone__t{font-family:var(--display);font-weight:700;font-size:15px}
 .zone__s{font-family:var(--font);font-weight:500;font-size:12px;color:var(--muted)}
 .zone--1 .zone__num{background:var(--primary)}
@@ -291,7 +290,7 @@ tbody tr:hover{background:var(--surface-hover)}
 .anchor__title{font-weight:600;font-size:14px;margin:13px 0 3px}
 .rmetrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:6px}
 .rmetric{background:#fff;border:1px solid var(--border-light);border-radius:var(--r-md);padding:13px 14px;text-align:center}
-.rmetric__n{font-family:var(--display);font-weight:800;font-size:26px;letter-spacing:-.02em;color:var(--primary);line-height:1}
+.rmetric__n{font-family:var(--display);font-weight:700;font-size:26px;letter-spacing:-.02em;color:var(--primary);line-height:1}
 .rmetric__l{font-size:11.5px;color:var(--muted);margin-top:4px}
 .rnote{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-top:13px}
 .rnote svg{width:14px;height:14px;color:var(--teal);flex-shrink:0}
