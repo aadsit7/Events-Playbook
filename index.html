@@ -39,7 +39,7 @@
   --primary:var(--blue); --primary-dark:#0071E3; --primary-soft:#5AA9FF;
   --teal:var(--green); --teal-deep:#248A3D; --teal-soft:#86DFA4;
   --warning:var(--orange); --danger:var(--pink);
-  --surface:#FFFFFF; --surface-hover:var(--card);
+  --surface:#FFFFFF; --surface-hover:#EBEBF0;
   --text:var(--gray); --muted:var(--gray-light);
   --border:var(--hairline); --border-light:#E8E8ED;
   --font:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
@@ -208,7 +208,7 @@ tbody tr:hover{background:var(--surface-hover)}
 @keyframes spin{to{transform:rotate(360deg)}}
 /* buyer-role filter row */
 .rolebar{margin-top:-4px;gap:10px}
-.rolebar__lbl{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.rolebar__lbl{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gray-light)}
 /* outreach progress bar (overview) */
 .segbar{display:flex;height:32px;border-radius:var(--r-sm);overflow:hidden;background:var(--border-light)}
 .seg{height:100%;transition:width .4s}
@@ -216,7 +216,7 @@ tbody tr:hover{background:var(--surface-hover)}
 .seg-leg{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text)}
 .seg-leg b{color:var(--ink);font-weight:700}
 .seg-dot{width:10px;height:10px;border-radius:3px}
-.tfoot{padding:12px 16px;font-size:12.5px;color:var(--muted);border-top:1px solid var(--border-light);display:flex;justify-content:space-between;align-items:center}
+.tfoot{padding:16px;font-size:12.5px;color:var(--gray-light);border-top:1px solid var(--hairline);display:flex;justify-content:space-between;align-items:center}
 .empty{padding:48px 20px;text-align:center;color:var(--muted);font-size:14px}
 
 /* ---------- Playbook ---------- */
@@ -466,7 +466,7 @@ tbody tr:hover{background:var(--surface-hover)}
   }
   function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
   function initials(name){var p=String(name||'?').trim().split(/\s+/);return((p[0]||'?')[0]+((p[1]||'')[0]||'')).toUpperCase();}
-  var AV_COLORS=['#2F6BFF','#0A8F82','#B97A1A','#6B93FF','#076B60','#5B6BD6','#C77D3A'];
+  var AV_COLORS=['#86868B'];
   function avColor(s){var h=0;s=String(s);for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;return AV_COLORS[h%AV_COLORS.length];}
   function el(id){return document.getElementById(id);}
   function toast(msg){var t=el('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('show');},2600);}
@@ -506,14 +506,14 @@ tbody tr:hover{background:var(--surface-hover)}
   ];
   // ICP buying role, derived from title seniority
   var ICP={
-    'C-Suite':{label:'Decision Maker',color:'#2F6BFF',bg:'#E6EEFF'},
-    'VP':{label:'Decision Maker',color:'#2F6BFF',bg:'#E6EEFF'},
-    'Director':{label:'Champion',color:'#0A8F82',bg:'#E3F4F1'},
-    'Manager':{label:'Champion',color:'#0A8F82',bg:'#E3F4F1'},
-    'Individual':{label:'Influencer',color:'#B97A1A',bg:'#FBF3E6'}
+    'C-Suite':{label:'Decision Maker',color:'#0071E3',bg:'rgba(0,122,255,.10)'},
+    'VP':{label:'Decision Maker',color:'#0071E3',bg:'rgba(0,122,255,.10)'},
+    'Director':{label:'Champion',color:'#248A3D',bg:'rgba(52,199,89,.14)'},
+    'Manager':{label:'Champion',color:'#248A3D',bg:'rgba(52,199,89,.14)'},
+    'Individual':{label:'Influencer',color:'#B25000',bg:'rgba(255,149,0,.14)'}
   };
   function icpOf(tier){return ICP[tier]||ICP.Individual;}
-  var ICP_UNKNOWN={label:'Unknown',color:'#8A93A8',bg:'#EEF1F7'};
+  var ICP_UNKNOWN={label:'Unknown',color:'#86868B',bg:'rgba(120,120,128,.12)'};
   // meta for an explicit ICP role label (used when the AI sets c.icpRole directly)
   function icpMetaForRole(role){
     for(var k in ICP){ if(ICP[k].label===role) return ICP[k]; }
