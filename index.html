@@ -77,7 +77,7 @@ button{font-family:inherit}
 .btn svg{width:15px;height:15px}
 
 /* ---------- Layout ---------- */
-.wrap{max-width:1180px;margin:0 auto;padding:22px 24px 64px}
+.wrap{max-width:var(--content-max);margin:0 auto;padding:22px 24px 64px}
 
 /* ---------- Event header ---------- */
 .ehead{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;margin-bottom:20px}
@@ -113,20 +113,23 @@ button{font-family:inherit}
 .tlist{display:flex;align-items:center;gap:14px;padding:24px;margin-bottom:18px;flex-wrap:wrap}
 .tlist__icon{width:44px;height:44px;border-radius:var(--radius-tile);background:var(--blue);color:#fff;display:grid;place-items:center;flex-shrink:0}
 .tlist__icon svg{width:22px;height:22px}
-.tlist__body{flex:1;min-width:180px}
-.tlist__name{font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px}
-.tlist__name .ok{font-size:11px;font-weight:600;color:var(--teal-deep);background:rgba(52,199,89,.14);padding:2px 8px;border-radius:var(--r-full)}
+.tlist__body{flex:1;min-width:260px}
+.tlist__name{font-weight:600;font-size:15px;color:var(--ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tlist__name .ok{font-size:11px;font-weight:600;color:var(--teal-deep);background:rgba(52,199,89,.14);padding:2px 8px;border-radius:var(--r-full);white-space:nowrap}
 .tlist__sub{font-size:12.5px;color:var(--muted);margin-top:2px}
 .tlist__actions{display:flex;gap:8px}
 
 /* ---------- KPI row ---------- */
-.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
 .kpi{background:var(--card);border:none;border-radius:var(--radius-card);box-shadow:none;padding:24px}
-.kpi__label{font-size:12px;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:7px}
-.kpi__label svg{width:15px;height:15px}
-.kpi__num{font-family:var(--display);font-weight:700;font-size:30px;letter-spacing:-.02em;margin-top:8px;line-height:1}
-.kpi__foot{font-size:11.5px;color:var(--muted);margin-top:6px}
-.kpi__foot b{color:var(--teal);font-weight:700}
+/* Stat tile: big ink number first, label beneath in gray-light (CSS order
+   reverses the rendered markup; the icon is retired from the label). */
+.kpi{display:flex;flex-direction:column}
+.kpi__label{order:2;font-size:13px;font-weight:400;color:var(--gray-light);margin-top:6px}
+.kpi__label svg{display:none}
+.kpi__num{order:1;font-family:var(--display);font-weight:700;font-size:36px;letter-spacing:-.015em;line-height:1;color:var(--ink)}
+.kpi__foot{order:3;font-size:12px;color:var(--gray-light);margin-top:2px}
+.kpi__foot b{color:var(--gray);font-weight:600}
 
 /* ---------- Overview charts ---------- */
 .grid-3{display:grid;grid-template-columns:1.15fr 1fr 1fr;gap:16px}
@@ -530,13 +533,13 @@ tbody tr:hover{background:var(--surface-hover)}
   var FIRST=['James','Maria','David','Sarah','Michael','Priya','Robert','Emily','Daniel','Aisha','Chris','Laura','Kevin','Nina','Brian','Sofia','Mark','Rachel','Tom','Elena','Paul','Grace','Steve','Hana','Alan','Zoe','Ryan','Mia','Jacob','Leah','Omar','Claire','Victor','Anya','Peter','Dana'];
   var LAST=['Chen','Rodriguez','Patel','Kim','Johnson','Nguyen','Okafor','Smith','Garcia','Muller','Silva','Brown','Ahmed','Lopez','Wang','Novak','Haddad','Reyes','Ivanov','Costa','Berg','Dubois','Fischer','Rossi','Khan','Park','Adams','Torres','Weber','Singh'];
   var TIERS=[
-    {tier:'C-Suite',   titles:['CIO','CISO','CTO','Chief Digital Officer'],           color:'#2F6BFF', w:0.10},
-    {tier:'VP',        titles:['VP of IT','VP Infrastructure','VP Security'],          color:'#6B93FF', w:0.16},
-    {tier:'Director',  titles:['Director of IT','Dir. Endpoint Eng.','IT Director'],   color:'#0A8F82', w:0.24},
-    {tier:'Manager',   titles:['IT Manager','Endpoint Manager','Systems Manager'],     color:'#59C3B6', w:0.26},
-    {tier:'Individual',titles:['Systems Administrator','Endpoint Engineer','Desktop Engineer','IT Specialist'], color:'#C3CBDA', w:0.24}
+    {tier:'C-Suite',   titles:['CIO','CISO','CTO','Chief Digital Officer'],           color:'#007AFF', w:0.10},
+    {tier:'VP',        titles:['VP of IT','VP Infrastructure','VP Security'],          color:'#3395FF', w:0.16},
+    {tier:'Director',  titles:['Director of IT','Dir. Endpoint Eng.','IT Director'],   color:'#66AFFF', w:0.24},
+    {tier:'Manager',   titles:['IT Manager','Endpoint Manager','Systems Manager'],     color:'#99CAFF', w:0.26},
+    {tier:'Individual',titles:['Systems Administrator','Endpoint Engineer','Desktop Engineer','IT Specialist'], color:'#CCE4FF', w:0.24}
   ];
-  var OWNERS=[{name:'Recast',color:'#2F6BFF',w:0.50},{name:'Nerdio',color:'#0A8F82',w:0.35},{name:'Marketing',color:'#B97A1A',w:0.15}];
+  var OWNERS=[{name:'Recast',color:'#007AFF',w:0.50},{name:'Nerdio',color:'#66AFFF',w:0.35},{name:'Marketing',color:'#CCE4FF',w:0.15}];
   var STATUS_W=[{v:'none',w:0.64},{v:'meeting',w:0.15},{v:'declined',w:0.21}];
 
   function domainOf(co){return co.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,14)+'.com';}
@@ -657,9 +660,9 @@ tbody tr:hover{background:var(--surface-hover)}
 
     // Outreach progress (stacked)
     var segsP=[
-      {label:'Meeting booked',n:mtg,color:'#0A8F82'},
-      {label:'Not interested',n:dec,color:'#C4414E'},
-      {label:'Still to work',n:todo,color:'#DCE1EC'}
+      {label:'Meeting booked',n:mtg,color:'#34C759'},
+      {label:'Not interested',n:dec,color:'#FF2D55'},
+      {label:'Still to work',n:todo,color:'#E8E8ED'}
     ];
     var segBar='';
     segsP.forEach(function(s){var w=total>0?(s.n/total*100):0; if(s.n>0) segBar+='<div class="seg" style="width:'+w.toFixed(2)+'%;background:'+s.color+'"></div>';});
