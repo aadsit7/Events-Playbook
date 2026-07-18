@@ -68,7 +68,7 @@ button{font-family:inherit}
 .avatars{display:flex;align-items:center}
 .avatars .av{margin-left:-8px;border:2px solid #fff}
 .av{width:30px;height:30px;border-radius:var(--r-full);display:grid;place-items:center;font-weight:700;font-size:11px;color:#fff;flex-shrink:0}
-.btn{display:inline-flex;align-items:center;gap:7px;font-size:15px;font-weight:600;padding:12px 24px;border-radius:var(--radius-pill);border:1px solid var(--blue);background:transparent;color:var(--blue);cursor:pointer;transition:all .12s}
+.btn{display:inline-flex;align-items:center;gap:7px;font-size:15px;font-weight:600;padding:12px 24px;border-radius:var(--radius-pill);border:1px solid var(--blue);background:transparent;color:var(--blue);cursor:pointer;transition:all .12s;white-space:nowrap}
 .btn:hover{background:rgba(0,122,255,.06)}
 .btn--primary{background:var(--blue);border-color:transparent;color:#fff}
 .btn--primary:hover{background:var(--primary-dark);color:#fff}
@@ -81,7 +81,7 @@ button{font-family:inherit}
 
 /* ---------- Event header ---------- */
 .ehead{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;margin-bottom:20px}
-.ehead__title{font-family:var(--display);font-weight:700;font-size:40px;letter-spacing:-.015em;line-height:1.1;color:var(--ink)}
+.ehead__title{font-family:var(--display);font-weight:700;font-size:clamp(30px,8.5vw,40px);letter-spacing:-.015em;line-height:1.1;color:var(--ink)}
 .ehead__meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:12px;color:var(--text);font-size:13.5px}
 .ehead__meta svg{width:15px;height:15px;vertical-align:-2px;margin-right:5px;color:var(--muted)}
 .ehead__meta .dot{color:var(--border)}
@@ -117,7 +117,7 @@ button{font-family:inherit}
 .tlist__name{font-weight:600;font-size:15px;color:var(--ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .tlist__name .ok{font-size:11px;font-weight:600;color:var(--teal-deep);background:rgba(52,199,89,.14);padding:2px 8px;border-radius:var(--r-full);white-space:nowrap}
 .tlist__sub{font-size:12.5px;color:var(--muted);margin-top:2px}
-.tlist__actions{display:flex;gap:8px}
+.tlist__actions{display:flex;gap:8px;flex-wrap:wrap}
 
 /* ---------- KPI row ---------- */
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
@@ -175,7 +175,7 @@ button{font-family:inherit}
 .search svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--muted)}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
 .chip{font-size:12.5px;font-weight:600;padding:7px 13px;border-radius:var(--r-full);border:1px solid var(--border);background:#fff;color:var(--text);cursor:pointer;transition:all .12s;white-space:nowrap}
-.chip:hover{border-color:var(--primary-soft)}
+.chip:hover{border-color:var(--blue);color:var(--blue)}
 .chip--active{background:var(--primary);border-color:var(--primary);color:#fff}
 .chip b{font-variant-numeric:tabular-nums;opacity:.8;margin-left:4px;font-weight:700}
 
@@ -223,7 +223,7 @@ tbody tr:hover{background:var(--surface-hover)}
 .pbhead{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:16px}
 .typebar{display:flex;flex-wrap:wrap;gap:8px}
 .typebtn{font-size:13px;font-weight:600;padding:9px 15px;border-radius:var(--r-full);background:#fff;border:1px solid var(--border);color:var(--text);cursor:pointer;transition:all .12s}
-.typebtn:hover{border-color:var(--primary-soft);color:var(--primary)}
+.typebtn:hover{border-color:var(--blue);color:var(--blue)}
 .typebtn--active{background:var(--primary);border-color:var(--primary);color:#fff}
 .pbring{display:flex;align-items:center;gap:12px}
 .pbring__meta{font-size:12.5px;color:var(--muted);text-align:right}
@@ -359,6 +359,17 @@ tbody tr:hover{background:var(--surface-hover)}
   .fstage,.fconv{grid-template-columns:92px 1fr auto}
   .fstage__label{font-size:12px}
 }
+@media(max-width:600px){
+  .topbar{padding:0 16px;gap:10px}
+  .brand__sep,.brand__ctx,.avatars{display:none}
+  .wrap{padding:16px 16px 48px}
+  .tabs{overflow-x:auto}
+}
+
+/* Keyboard focus — accent ring instead of the browser default */
+.btn:focus-visible,.chip:focus-visible,.typebtn:focus-visible,.statusbtn:focus-visible,
+.tab:focus-visible,.gate__link:focus-visible,.gate__match:focus-visible{outline:none;box-shadow:var(--ring)}
+.btn:focus,.chip:focus,.typebtn:focus,.statusbtn:focus,.tab:focus,.gate__link:focus,.gate__match:focus{outline:none}
 </style>
 </head>
 <body>
