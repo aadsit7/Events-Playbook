@@ -317,6 +317,13 @@ tbody tr:hover{background:var(--surface-hover)}
 #panel-playbook .pb2-noteslabel{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gray-light);margin-bottom:6px}
 #panel-playbook .pb2-note{width:100%;font-family:var(--font);font-size:13px;color:var(--ink);background:var(--pb-tint);border:1px solid var(--pb-bord);border-radius:5px;padding:9px 11px;resize:vertical;min-height:44px}
 #panel-playbook .pb2-note:focus{outline:none;border-color:var(--pb-blue)}
+#panel-playbook .pb2-notefoot{display:flex;align-items:center;gap:10px;margin-top:8px}
+#panel-playbook .pb2-notesave{font-family:var(--font);font-size:12.5px;font-weight:700;color:#fff;background:var(--pb-blue);border:none;border-radius:5px;padding:7px 14px;cursor:pointer;transition:opacity .15s}
+#panel-playbook .pb2-notesave:hover:not(:disabled){opacity:.85}
+#panel-playbook .pb2-notesave:disabled{opacity:.45;cursor:default}
+#panel-playbook .pb2-notestatus{font-size:12px;color:var(--muted)}
+#panel-playbook .pb2-notestatus--ok{color:#0F7A3F}
+#panel-playbook .pb2-notestatus--err{color:#B42318}
 /* transient "Saved ✓" badge (appended to body) */
 #pb2-saved{position:fixed;right:18px;bottom:18px;z-index:60;background:#0F7A3F;color:#fff;font-size:12.5px;font-weight:700;padding:8px 14px;border-radius:6px;opacity:0;transform:translateY(6px);transition:all .25s;pointer-events:none}
 #pb2-saved.show{opacity:1;transform:none}
@@ -1050,8 +1057,14 @@ tbody tr:hover{background:var(--surface-hover)}
       +'<button type="button" class="pb2-gatecheck" aria-label="Confirm this stage is done">'+PB_CHECK+'</button>'
       +'<div class="pb2-gatetext"><b>This stage is done when:</b> '+esc(s.done_when)+'</div>'
       +'</div>';
+    var noteTrim=String(s.note||'').trim();
+    var noteSynced=!!(noteTrim&&s.noteSynced===noteTrim);
     var notes='<div class="pb2-notes"><label class="pb2-noteslabel">Notes for the team</label>'
-      +'<textarea class="pb2-note" data-stage="'+s.key+'" rows="2" placeholder="Anything the team should know — synced into the event description.">'+esc(s.note||'')+'</textarea></div>';
+      +'<textarea class="pb2-note" data-stage="'+s.key+'" rows="2" placeholder="Anything the team should know — Save note adds it to this event\'s descriptions.">'+esc(s.note||'')+'</textarea>'
+      +'<div class="pb2-notefoot">'
+      +'<button type="button" class="pb2-notesave" data-stage="'+s.key+'"'+((!noteTrim||noteSynced)?' disabled':'')+'>Save note</button>'
+      +'<span class="pb2-notestatus'+(noteSynced?' pb2-notestatus--ok':'')+'">'+(noteSynced?'Added to this event’s descriptions ✓':'')+'</span>'
+      +'</div></div>';
     return '<div class="pb2-card'+(open?' pb2-card--open':'')+(s.gate?' pb2-card--done':'')+'" id="pb2-card-'+s.key+'">'
       +'<button type="button" class="pb2-cardhead" data-stage="'+s.key+'">'
       +'<span class="pb2-cardnum">'+(s.gate?PB_CHECK:(i+1))+'</span>'
@@ -1316,6 +1329,8 @@ tbody tr:hover{background:var(--surface-hover)}
       }
       return;
     }
+    var nsBtn=e.target.closest('.pb2-notesave');
+    if(nsBtn){pbSaveStageNote(nsBtn.getAttribute('data-stage'),nsBtn);return;}
     var head=e.target.closest('.pb2-cardhead');
     if(head){
       var hk=head.getAttribute('data-stage');
@@ -1336,8 +1351,54 @@ tbody tr:hover{background:var(--surface-hover)}
     if(!e.target.classList.contains('pb2-note')) return;
     var s=pbStage(e.target.getAttribute('data-stage'));if(!s) return;
     s.note=e.target.value;
+    // Reflect edits on the stage's Save button without a re-render (a render
+    // would steal focus from the textarea): enable it when there's unsynced
+    // text, and clear any stale "saved" status.
+    var wrap=e.target.closest('.pb2-notes');
+    if(wrap){
+      var btn=wrap.querySelector('.pb2-notesave'),st=wrap.querySelector('.pb2-notestatus');
+      var t=e.target.value.trim();
+      if(btn) btn.disabled=!t||t===s.noteSynced;
+      if(st&&t!==s.noteSynced){st.textContent='';st.className='pb2-notestatus';}
+    }
     pbQueueSave(); // no re-render — keeps the textarea focused while typing
   });
+
+  // Explicit per-stage note save: persists the whole playbook, then appends
+  // this stage's note as a NEW dated row in the Event_Descriptions tab, so it
+  // surfaces automatically in the portal's Descriptions list for this event.
+  function pbSaveStageNote(stageKey,btn){
+    var s=pbStage(stageKey); if(!s||!btn) return;
+    var note=String(s.note||'').trim();
+    var st=btn.parentNode.querySelector('.pb2-notestatus');
+    function setStatus(msg,cls){if(st){st.textContent=msg;st.className='pb2-notestatus'+(cls?' pb2-notestatus--'+cls:'');}}
+    if(!note){setStatus('Write a note first.','err');return;}
+    if(!aiConfigured()||!eventIsSheet()){
+      setStatus('Demo event — notes aren’t synced to the sheet.','err');
+      return;
+    }
+    var ev=state.event;
+    btn.disabled=true;setStatus('Saving…','');
+    clearTimeout(pbSaveTimer); // the explicit save supersedes any pending debounce
+    aiFetch({action:'savePlaybook',eventKey:ev.key,eventTitle:ev.title,stages:pbSerialize()}).then(function(res){
+      if(state.event!==ev) return null;
+      if(!(res&&res.ok)) throw new Error((res&&res.error)||'save failed');
+      pbApplyNotesToDescription();
+      return aiFetch({action:'saveStageNote',eventKey:ev.key,eventTitle:ev.title,
+        stageKey:s.key,stageName:s.name,note:note});
+    }).then(function(res){
+      if(state.event!==ev||res===null) return;
+      if(!(res&&res.ok)) throw new Error((res&&res.error)||'sync failed');
+      s.noteSynced=note;
+      pbFlashSaved();
+      setStatus(res.duplicate?'Already in this event’s descriptions ✓':'Added to this event’s descriptions ✓','ok');
+      // Button stays disabled until the note is edited again.
+    }).catch(function(err){
+      if(state.event!==ev) return;
+      btn.disabled=false;
+      setStatus('Couldn’t sync — '+((err&&err.message)||'network error')+'. Try again.','err');
+    });
+  }
 
   // Upload (delegated buttons -> hidden input)
   document.body.addEventListener('click',function(e){

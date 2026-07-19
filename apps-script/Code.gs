@@ -100,6 +100,13 @@ function doPost(e) {
       return doLoadPlaybook(payload);
     }
 
+    // NEW — append one playbook stage note as a dated row in the
+    // Event_Descriptions tab, so it surfaces in the portal's Descriptions
+    // list for the event.
+    if (payload.action === 'saveStageNote') {
+      return doSaveStageNote(payload);
+    }
+
     if (payload.action === 'getConfig') {
       return doGetConfig();
     }
@@ -1131,6 +1138,122 @@ function pbDateStr(v) {
  * above it is never touched. Best-effort: any failure is swallowed
  * so a description sync problem can never break a playbook save.
  */
+// ============================================================
+// NEW — STAGE NOTE → Event_Descriptions row
+// The portal's Edit Event modal lists dated "Descriptions" per event,
+// backed by the Event_Descriptions tab (description_id, event_id, title,
+// description_date, description_text, created_at). The playbook's per-stage
+// "Save note" button calls this action so a saved note appears there
+// automatically as a new dated entry.
+// ============================================================
+var EVENT_DESCRIPTIONS_TAB = 'Event_Descriptions';
+var EVENT_DESCRIPTION_HEADERS = [
+  'description_id', 'event_id', 'title', 'description_date', 'description_text', 'created_at'
+];
+var PB_STAGE_NAMES = {
+  plan: 'Plan & Build', prepare: 'Prepare', event: 'Event Day',
+  follow: 'Follow-Up', pipeline: 'Pipeline', outcomes: 'Outcomes'
+};
+
+function getEventDescriptionsSheet(ss) {
+  var sheet = ss.getSheetByName(EVENT_DESCRIPTIONS_TAB);
+  if (!sheet) {
+    sheet = ss.insertSheet(EVENT_DESCRIPTIONS_TAB);
+    sheet.getRange(1, 1, 1, EVENT_DESCRIPTION_HEADERS.length).setValues([EVENT_DESCRIPTION_HEADERS]);
+    return sheet;
+  }
+  var lastCol = Math.max(1, sheet.getLastColumn());
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h || '').trim(); });
+  var missing = EVENT_DESCRIPTION_HEADERS.filter(function (h) { return headers.indexOf(h) === -1; });
+  if (missing.length) sheet.getRange(1, headers.length + 1, 1, missing.length).setValues([missing]);
+  return sheet;
+}
+
+function escapeHtml_(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Existing Event_Descriptions rows store rich-text HTML, so the note is
+// wrapped the same way: a bold stage header, then the note text with blank
+// lines as paragraph breaks and single newlines as <br>.
+function stageNoteHtml(stageName, note) {
+  var paras = String(note).trim().split(/\n{2,}/).map(function (p) {
+    return '<p>' + escapeHtml_(p).replace(/\n/g, '<br>') + '</p>';
+  }).join('');
+  return '<p><strong>Playbook — ' + escapeHtml_(stageName) + '</strong></p>' + paras;
+}
+
+/**
+ * doSaveStageNote
+ * Input: { action:'saveStageNote', eventKey, eventTitle, stageKey, stageName, note }
+ * Appends ONE new Event_Descriptions row for the event, dated today, with the
+ * note rendered as HTML under a "Playbook — <Stage>" header. The event row is
+ * resolved with the same readEventRows()/eventKeyOf() join the rest of the
+ * backend uses, and the row's own event_id/title win over what the client
+ * sent. If an identical description already exists for this event (e.g. the
+ * user clicked Save twice), no new row is written and { duplicate:true } is
+ * returned — repeated saves can never pile up copies.
+ * Output: { ok:true, added:true, description_id } or { ok:true, duplicate:true }
+ */
+function doSaveStageNote(payload) {
+  var key = String(payload.eventKey == null ? '' : payload.eventKey).trim();
+  if (!key) return jsonOut({ ok: false, code: 'bad_request', error: 'No event specified' });
+  var note = String(payload.note == null ? '' : payload.note).trim();
+  if (!note) return jsonOut({ ok: false, code: 'empty_note', error: 'The note is empty' });
+  if (note.length > 20000) note = note.substring(0, 20000); // safety cap
+
+  var rows = readEventRows();
+  var found = null;
+  for (var i = 0; i < rows.length; i++) {
+    if (eventKeyOf(rows[i]) === key) { found = rows[i]; break; }
+  }
+  if (!found) {
+    return jsonOut({ ok: false, code: 'not_found', error: 'Event not found — it may have been removed from the sheet' });
+  }
+  var eventId = String(found.event_id == null ? '' : found.event_id).trim() || key;
+  var title = String(found.title || payload.eventTitle || '');
+
+  var stageKey = String(payload.stageKey == null ? '' : payload.stageKey).trim();
+  var stageName = String(payload.stageName == null ? '' : payload.stageName).trim()
+    || PB_STAGE_NAMES[stageKey] || stageKey || 'Team note';
+  var html = stageNoteHtml(stageName, note);
+
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = getEventDescriptionsSheet(ss);
+  var numCols = sheet.getLastColumn();
+  var headers = sheet.getRange(1, 1, 1, numCols).getValues()[0].map(function (h) { return String(h || '').trim(); });
+  var idIdx = headers.indexOf('event_id');
+  var textIdx = headers.indexOf('description_text');
+
+  // Duplicate guard: same event + byte-identical text → succeed without writing.
+  if (idIdx !== -1 && textIdx !== -1 && sheet.getLastRow() > 1) {
+    var existing = sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols).getValues();
+    for (var r = 0; r < existing.length; r++) {
+      if (String(existing[r][idIdx] == null ? '' : existing[r][idIdx]).trim() !== eventId) continue;
+      if (String(existing[r][textIdx] || '') === html) {
+        return jsonOut({ ok: true, duplicate: true, event_id: eventId });
+      }
+    }
+  }
+
+  var now = new Date();
+  var descId = 'dsc_' + now.getTime().toString(36) + Math.floor(Math.random() * 1e12).toString(36);
+  var map = {
+    description_id: descId,
+    event_id: eventId,
+    title: title,
+    description_date: Utilities.formatDate(now, ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd'),
+    description_text: html,
+    created_at: now.toISOString()
+  };
+  var row = headers.map(function (h) {
+    return Object.prototype.hasOwnProperty.call(map, h) ? map[h] : '';
+  });
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, headers.length).setValues([row]);
+
+  return jsonOut({ ok: true, added: true, description_id: descId, event_id: eventId });
+}
+
 var PB_NOTES_MARKER = '⸻ Team Notes ⸻';
 function syncNotesToEventDescription(ss, eventKey, stages) {
   try {
