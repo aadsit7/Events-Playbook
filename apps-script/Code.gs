@@ -10,16 +10,22 @@
  *     updateDescription / getConfig
  *   Playbook (Event Workspace):
  *     categorizeLeads / listEvents / openEvent / saveEventContacts /
- *     listEventContacts / savePlaybook / loadPlaybook / saveStageNote
+ *     listEventContacts / savePlaybook / loadPlaybook / saveStageNote /
+ *     analyzePlaybookNotes
  *
- *     NEW: savePlaybook / loadPlaybook persist each event's 7-stage playbook
- *     (activities, owners, due dates, gates, stage descriptions) to the
+ *     savePlaybook / loadPlaybook persist each event's 7-stage playbook
+ *     (activities, owners, completion dates, stage descriptions) to the
  *     Event_Playbook tab. saveStageNote appends one stage's description as a
  *     new dated row in the Event_Descriptions tab — the text starts with the
  *     stage title, then the notes, then the save date — so it surfaces in the
- *     portal's Descriptions list for that event. All three are purely
- *     additive: they create/extend only the Event_Playbook and
- *     Event_Descriptions tabs and touch no portal action or tab.
+ *     portal's Descriptions list for that event.
+ *
+ *     NEW: analyzePlaybookNotes reads every saved description note for an
+ *     event (Event_Descriptions rows + the Events row's description cell),
+ *     asks Claude which playbook activities those notes show as ALREADY
+ *     COMPLETED, and returns them (with the evidencing note's date) so the
+ *     workspace can check the boxes automatically on load. Read-only and
+ *     purely additive: it writes nothing and touches no portal action or tab.
  *   Portal (event modal "Analyze" on attached documents):
  *     analyzeDocument with analysisType:'attendee_list' — extracts the
  *     attendee list deterministically, classifies titles with the SAME
@@ -116,6 +122,13 @@ function doPost(e) {
     // list for the event.
     if (payload.action === 'saveStageNote') {
       return doSaveStageNote(payload);
+    }
+
+    // NEW — analyze this event's saved description notes with the AI and
+    // report which playbook activities they show as already completed, so
+    // the workspace can check those boxes automatically on load.
+    if (payload.action === 'analyzePlaybookNotes') {
+      return doAnalyzePlaybookNotes(payload);
     }
 
     if (payload.action === 'getConfig') {
@@ -1972,4 +1985,165 @@ function syncNotesToEventDescription(ss, eventKey, stages) {
       return;
     }
   } catch (err) { /* best-effort by design */ }
+}
+
+// ============================================================
+// NEW — AI AUTO-CHECK: description notes → completed activities
+// The workspace calls analyzePlaybookNotes when an event opens
+// (and after a stage note is saved). This reads every saved
+// description note for the event, asks Claude which playbook
+// activities those notes show as ALREADY COMPLETED, and returns
+// them with the evidencing note's date. Read-only: nothing is
+// written — the client checks the boxes and persists via the
+// normal savePlaybook flow.
+// ============================================================
+
+/**
+ * htmlToPlainText_
+ * Event_Descriptions rows store rich-text HTML — flatten to readable plain
+ * text (paragraph/line breaks preserved) before handing notes to the model.
+ */
+function htmlToPlainText_(html) {
+  return String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"').replace(/&#39;/gi, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
+ * collectEventNotes_
+ * Every saved description note for one event, as [{ date, source, text }]:
+ * the Events row's own description cell (which includes the ⸻ Team Notes ⸻
+ * mirror of the per-stage boxes) plus every dated Event_Descriptions row
+ * (the rows "Save note" appends, and any the portal added). The event row
+ * is resolved with the same readEventRows()/eventKeyOf() join the rest of
+ * the backend uses, so row-N keys and event_id keys both work.
+ */
+function collectEventNotes_(eventKey) {
+  var notes = [];
+  var rows = readEventRows();
+  var found = null;
+  for (var i = 0; i < rows.length; i++) {
+    if (eventKeyOf(rows[i]) === eventKey) { found = rows[i]; break; }
+  }
+  var eventId = found ? (String(found.event_id == null ? '' : found.event_id).trim() || eventKey) : eventKey;
+  if (found) {
+    var desc = String(found.description || '').trim();
+    if (desc) notes.push({ date: '', source: 'Event description', text: desc.substring(0, 8000) });
+  }
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = ss.getSheetByName(EVENT_DESCRIPTIONS_TAB);
+    if (sheet && sheet.getLastRow() > 1) {
+      var data = sheet.getDataRange().getValues();
+      var h = data[0].map(function (x) { return String(x || '').trim(); });
+      var cId = h.indexOf('event_id'), cDate = h.indexOf('description_date'), cText = h.indexOf('description_text');
+      if (cId !== -1 && cText !== -1) {
+        for (var r = 1; r < data.length; r++) {
+          var rowId = String(data[r][cId] == null ? '' : data[r][cId]).trim();
+          if (rowId !== eventId && rowId !== eventKey) continue;
+          var text = htmlToPlainText_(String(data[r][cText] || ''));
+          if (!text) continue;
+          notes.push({
+            date: cDate !== -1 ? pbDateStr(data[r][cDate]) : '',
+            source: 'Saved description',
+            text: text.substring(0, 8000)
+          });
+        }
+      }
+    }
+  } catch (err) { /* best-effort — the Events description alone can still be analyzed */ }
+  return notes.slice(0, 60); // safety cap so one event can never blow the model context
+}
+
+/**
+ * doAnalyzePlaybookNotes
+ * Input:  { action:'analyzePlaybookNotes', eventKey,
+ *           stages:[{ key, name, acts:[{ i, x, d }] }] }
+ *         (acts carry the CURRENT checked flag `d` so the model skips what's
+ *         already done — it is only ever asked about unchecked activities.)
+ * Output: { ok:true, checks:[{ stage, i, date }], notes:<count analyzed> }
+ *         `date` is yyyy-MM-dd (the evidencing note's date, or a date the
+ *         note itself states) or '' when unknown. checks is [] — without an
+ *         AI call at all — when the event has no saved notes.
+ * Accuracy-first: the model is told to mark an activity ONLY when a note
+ * clearly shows it actually happened (planning/intent is not completion),
+ * and every returned pair is validated against the stages the client sent —
+ * unknown stage keys or activity indexes are dropped, never guessed.
+ */
+function doAnalyzePlaybookNotes(payload) {
+  var key = String(payload.eventKey == null ? '' : payload.eventKey).trim();
+  if (!key) return jsonOut({ ok: false, code: 'bad_request', error: 'No event specified' });
+  var stages = (payload.stages && payload.stages.length) ? payload.stages : [];
+  if (!stages.length) return jsonOut({ ok: true, checks: [], notes: 0 });
+  if (stages.length > 20) stages = stages.slice(0, 20); // safety cap
+
+  var notes = collectEventNotes_(key);
+  if (!notes.length) return jsonOut({ ok: true, checks: [], notes: 0 });
+
+  if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set in this project’s Script Properties');
+
+  var actJson = JSON.stringify(stages.map(function (s) {
+    return {
+      stage: String(s.key || ''),
+      stage_name: String(s.name || ''),
+      activities: (s.acts || []).slice(0, 30).map(function (a, j) {
+        return {
+          i: (a && a.i != null && !isNaN(Number(a.i))) ? Number(a.i) : j,
+          text: String((a && a.x) || ''),
+          already_done: !!(a && a.d)
+        };
+      })
+    };
+  }));
+
+  var prompt = [
+    'You are reviewing an event team’s saved description notes to determine which of their event-playbook activities have ALREADY been completed.',
+    '',
+    '=== PLAYBOOK ACTIVITIES (JSON) ===',
+    actJson,
+    '',
+    '=== SAVED NOTES (JSON — each has the date it was saved; "" when unknown) ===',
+    JSON.stringify(notes),
+    '',
+    'Rules:',
+    '- Report an activity as completed ONLY when a note clearly states that the activity (or its obvious equivalent in different words) has actually happened or been finished. For example, "locked in the date, topic and speakers" completes "Confirm date, format, topic, and speakers".',
+    '- Planning to do something, discussing it, scheduling it for later, or assigning an owner is NOT completion. Be conservative — when in doubt, leave the activity out.',
+    '- Skip every activity whose "already_done" is true — it is already checked and must not appear in your answer.',
+    '- Never report an activity as NOT done; simply omit anything that is not clearly complete.',
+    '- "date": the completion date as yyyy-MM-dd — prefer a specific date the note text itself states; otherwise use the note’s own saved date; otherwise "".',
+    '',
+    'Return ONLY a JSON array in this exact shape (no prose, no markdown fences):',
+    '[{"stage":"<stage key>","i":<activity index>,"done":true,"date":"yyyy-MM-dd or empty string"}]',
+    'Return [] if no activity is clearly complete.'
+  ].join('\n');
+
+  var text = callClaudeText_(prompt, 4000, 'claude-sonnet-5');
+  var parsed = parseJsonLoose_(text);
+  var arr = Array.isArray(parsed) ? parsed : (parsed && parsed.checks) || [];
+
+  // Validate every returned pair against the stages the client actually sent.
+  var valid = {};
+  stages.forEach(function (s) {
+    var set = {};
+    (s.acts || []).slice(0, 30).forEach(function (a, j) {
+      set[(a && a.i != null && !isNaN(Number(a.i))) ? Number(a.i) : j] = true;
+    });
+    valid[String(s.key || '')] = set;
+  });
+  var checks = [];
+  (arr || []).forEach(function (c) {
+    if (!c || c.done !== true) return;
+    var sk = String(c.stage || ''), ai = Number(c.i);
+    if (!valid[sk] || !valid[sk][ai]) return;
+    var date = String(c.date || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) date = '';
+    checks.push({ stage: sk, i: ai, date: date });
+  });
+  return jsonOut({ ok: true, checks: checks, notes: notes.length });
 }

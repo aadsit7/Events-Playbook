@@ -300,22 +300,11 @@ tbody tr:hover{background:var(--surface-hover)}
 #panel-playbook .pb2-owner--recast{background:var(--pb-blue);color:#fff}
 #panel-playbook .pb2-owner--partner{background:#fff;color:var(--pb-coral);border-color:var(--pb-coral)}
 #panel-playbook .pb2-owner--both{background:var(--pb-cyan);color:#fff}
-#panel-playbook .pb2-date{font-family:var(--font);font-size:12px;color:var(--text);background:#fff;border:1px solid var(--pb-bord);border-radius:5px;padding:4px 7px}
-/* "this stage is done when" bar */
-#panel-playbook .pb2-gate{margin-top:12px;background:rgba(204,136,0,.06);border:1px solid var(--pb-amber);border-radius:6px;padding:12px 14px}
-#panel-playbook .pb2-gatetext{font-size:13px;color:var(--text)}
-#panel-playbook .pb2-gatetext b{color:var(--pb-amber)}
-#panel-playbook .pb2-exit{margin:7px 0 11px;padding:0;list-style:none}
-#panel-playbook .pb2-exit li{position:relative;padding-left:20px;margin:4px 0}
-#panel-playbook .pb2-exit li::before{content:"";position:absolute;left:2px;top:4px;width:8px;height:8px;border-radius:50%;border:2px solid var(--pb-amber)}
-#panel-playbook .pb2-gatecheck{display:inline-flex;align-items:center;gap:8px;font-family:var(--font);font-size:12.5px;font-weight:700;color:var(--pb-amber);background:#fff;border:2px solid var(--pb-amber);border-radius:5px;padding:7px 14px;cursor:pointer;transition:opacity .15s}
-#panel-playbook .pb2-gatecheck:hover{opacity:.85}
-#panel-playbook .pb2-gatecheck svg{width:12px;height:12px;display:none;flex-shrink:0}
-#panel-playbook .pb2-gate--on{background:rgba(15,122,63,.07);border-color:var(--pb-green)}
-#panel-playbook .pb2-gate--on .pb2-gatetext b{color:var(--pb-green)}
-#panel-playbook .pb2-gate--on .pb2-exit li::before{border-color:var(--pb-green);background:var(--pb-green)}
-#panel-playbook .pb2-gate--on .pb2-gatecheck{background:var(--pb-green);border-color:var(--pb-green);color:#fff}
-#panel-playbook .pb2-gate--on .pb2-gatecheck svg{display:block}
+/* completion date stamp — shown only on checked-off activities */
+#panel-playbook .pb2-donedate{font-size:12px;font-weight:600;color:var(--pb-green);background:rgba(15,122,63,.08);border-radius:5px;padding:4px 9px;white-space:nowrap}
+/* "AI is reading the saved notes" indicator (playbook header) */
+#panel-playbook .pb2-ai{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--pb-blue)}
+#panel-playbook .pb2-ai .spin{border-color:rgba(0,122,255,.25);border-top-color:var(--pb-blue)}
 /* stage descriptions box */
 #panel-playbook .pb2-notes{margin-top:12px}
 #panel-playbook .pb2-noteslabel{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gray-light);margin-bottom:6px}
@@ -877,95 +866,69 @@ tbody tr:hover{background:var(--surface-hover)}
   /* ================= PLAYBOOK (v2 — 7-stage partner playbook) =================
      Seven lifecycle stages (Event → Audience → Messaging → Drive Attendance →
      Event Day → Follow-Up → Results), each with three activity rows (checkbox +
-     owner tag + due date), an amber exit-criteria block (three criteria + one
-     Confirm Stage Complete button), and a Descriptions box (typed or dictated
-     via the mic button — see pbToggleDictation).
-     Due dates default to offsets from the opened event's real start date; every
-     change is persisted per event to the Event_Playbook tab (debounced — see
-     pbQueueSave) and stage notes are mirrored into the Events row's description
-     under the "⸻ Team Notes ⸻" marker. The demo event renders the same UI but
-     never writes to the sheet. */
+     owner tag + a completion-date stamp on checked items) and a Descriptions
+     box (typed or dictated via the mic button — see pbToggleDictation).
+     Stage completion is fully automatic: a stage is complete once all of its
+     activities are checked — there is no manual confirm step. On event open the
+     saved description notes are analyzed by the AI (see pbAutoCheckFromNotes)
+     and any activity the notes show as already completed is checked off
+     automatically, dated from the note that evidenced it. Manual checks are
+     dated the day they're made. Every change is persisted per event to the
+     Event_Playbook tab (debounced — see pbQueueSave) and stage notes are
+     mirrored into the Events row's description under the "⸻ Team Notes ⸻"
+     marker. The demo event renders the same UI but never writes to the sheet
+     and is never AI-analyzed. */
 
   // Default activity template. ownerDefault: 'recast' | 'partner' | 'both'.
-  // off = default due date as days from event start (negative = before).
-  // done_when = the stage's three exit criteria (rendered in the amber block
-  // above the Confirm Stage Complete button).
   var PB_STAGES_TEMPLATE=[
     { key:'setup',    name:'Event', timing:'5–6 wks out',
-      done_when:[
-        'Event details are confirmed',
-        'Roles and responsibilities are agreed',
-        'Commercial goals are documented'],
       acts:[
-        {x:'Confirm date, format, topic, and speakers',        o:'both',   off:-38},
-        {x:'Align partner and internal owners',                o:'both',   off:-36},
-        {x:'Set meetings, opportunities, and closed won goals',o:'both',   off:-35}]},
+        {x:'Confirm date, format, topic, and speakers',        o:'both'},
+        {x:'Align partner and internal owners',                o:'both'},
+        {x:'Set meetings, opportunities, and closed won goals',o:'both'}]},
     { key:'audience', name:'Audience', timing:'4–5 wks out',
-      done_when:[
-        'Target list is uploaded',
-        'Buying committee coverage is understood',
-        'Priority accounts and owners are confirmed'],
       acts:[
-        {x:'Upload target accounts and contacts',              o:'both',   off:-31},
-        {x:'Identify buying roles and missing stakeholders',   o:'both',   off:-29},
-        {x:'Assign account and contact owners',                o:'both',   off:-28}]},
+        {x:'Upload target accounts and contacts',              o:'both'},
+        {x:'Identify buying roles and missing stakeholders',   o:'both'},
+        {x:'Assign account and contact owners',                o:'both'}]},
     { key:'messaging',name:'Messaging', timing:'3–4 wks out',
-      done_when:[
-        'Customer problem and urgency are clear',
-        'Partner and seller messaging are aligned',
-        'CTA and talk track are approved'],
       acts:[
-        {x:'Define Why Change and Why Now',                    o:'both',   off:-24},
-        {x:'Define Why Us and supporting proof',               o:'recast', off:-23},
-        {x:'Agree on the CTA and seller talk track',           o:'both',   off:-21}]},
+        {x:'Define Why Change and Why Now',                    o:'both'},
+        {x:'Define Why Us and supporting proof',               o:'recast'},
+        {x:'Agree on the CTA and seller talk track',           o:'both'}]},
     { key:'drive',    name:'Drive Attendance', timing:'3 wks – day before',
-      done_when:[
-        'Outreach is active',
-        'Registration progress is reviewed',
-        'Priority accounts have owners'],
       acts:[
-        {x:'Launch marketing, SDR, AE, and partner outreach',  o:'both',   off:-18},
-        {x:'Track registrations and priority accounts',        o:'recast', off:-10},
-        {x:'Confirm meeting booking availability',             o:'recast', off:-3}]},
+        {x:'Launch marketing, SDR, AE, and partner outreach',  o:'both'},
+        {x:'Track registrations and priority accounts',        o:'recast'},
+        {x:'Confirm meeting booking availability',             o:'recast'}]},
     { key:'eventday', name:'Event Day', timing:'',   // timing filled from event date
-      done_when:[
-        'Speakers and technology are ready',
-        'Event is delivered',
-        'Engagement is recorded'],
       acts:[
-        {x:'Finalize presentation and dry run',                o:'both',   off:-1},
-        {x:'Deliver the event and present the CTA',            o:'both',   off:0},
-        {x:'Capture attendance and engagement',                o:'recast', off:0}]},
+        {x:'Finalize presentation and dry run',                o:'both'},
+        {x:'Deliver the event and present the CTA',            o:'both'},
+        {x:'Capture attendance and engagement',                o:'recast'}]},
     { key:'followup', name:'Follow-Up', timing:'Within 1 week',
-      done_when:[
-        'Every priority contact has an owner',
-        'Follow-up messaging is agreed',
-        'Meeting outcomes are updated'],
       acts:[
-        {x:'Segment attendees and no-shows',                   o:'recast', off:1},
-        {x:'Assign follow-up owners',                          o:'both',   off:2},
-        {x:'Launch outreach and schedule meetings',            o:'both',   off:3}]},
+        {x:'Segment attendees and no-shows',                   o:'recast'},
+        {x:'Assign follow-up owners',                          o:'both'},
+        {x:'Launch outreach and schedule meetings',            o:'both'}]},
     { key:'results',  name:'Results', timing:'1–2 months after',
-      done_when:[
-        'Meeting results are documented',
-        'Opportunity counts are confirmed',
-        'Partner review is complete'],
       acts:[
-        {x:'Confirm meetings booked',                          o:'recast', off:21},
-        {x:'Confirm opportunities created',                    o:'recast', off:30},
-        {x:'Confirm closed won deals',                         o:'both',   off:60}]}
+        {x:'Confirm meetings booked',                          o:'recast'},
+        {x:'Confirm opportunities created',                    o:'recast'},
+        {x:'Confirm closed won deals',                         o:'both'}]}
   ];
   function pbFmtISO(d){
     function p2(n){return (n<10?'0':'')+n;}
     return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());
   }
-  // Fresh runtime state from the template. Unparseable/missing event dates
-  // leave every due date blank — never guessed (house rule).
-  function pbFreshState(startDate){
+  // Fresh runtime state from the template. dt is the COMPLETION date (set when
+  // an activity is checked — by the notes analysis or by hand), so it starts
+  // blank on every activity.
+  function pbFreshState(){
     return PB_STAGES_TEMPLATE.map(function(s){
-      return {key:s.key,name:s.name,timing:s.timing,done_when:s.done_when.slice(),gate:false,note:'',
+      return {key:s.key,name:s.name,timing:s.timing,note:'',
         acts:s.acts.map(function(a){
-          return {x:a.x,o:a.o,dt:startDate?pbFmtISO(addDays(startDate,a.off)):'',d:false};
+          return {x:a.x,o:a.o,dt:'',d:false};
         })};
     });
   }
@@ -976,12 +939,19 @@ tbody tr:hover{background:var(--surface-hover)}
     for(var i=0;i<state.playbook.length;i++){ if(state.playbook[i].key===key) return state.playbook[i]; }
     return null;
   }
-  // Current stage = the first stage whose exit bar is not confirmed.
+  // Stage completion is derived, never confirmed by hand: a stage is done
+  // when every one of its activities is checked.
+  function pbStageDone(s){
+    if(!s.acts.length) return false;
+    for(var i=0;i<s.acts.length;i++){ if(!s.acts[i].d) return false; }
+    return true;
+  }
+  // Current stage = the first stage with an unchecked activity.
   function pbCurrentIdx(){
-    for(var i=0;i<state.playbook.length;i++){ if(!state.playbook[i].gate) return i; }
+    for(var i=0;i<state.playbook.length;i++){ if(!pbStageDone(state.playbook[i])) return i; }
     return state.playbook.length;
   }
-  function pbStagesComplete(){var n=0;state.playbook.forEach(function(s){if(s.gate)n++;});return n;}
+  function pbStagesComplete(){var n=0;state.playbook.forEach(function(s){if(pbStageDone(s))n++;});return n;}
   function pbPartnerName(){return (state.event&&state.event.partner)||'Partner';}
   function pbOwnerLabel(o){
     if(o==='recast') return 'Recast';
@@ -999,9 +969,10 @@ tbody tr:hover{background:var(--surface-hover)}
   function pbRail(){
     var cur=pbCurrentIdx(),g=pbStagesComplete();
     var steps=state.playbook.map(function(s,i){
-      var cls=s.gate?' pb2-step--done':(i===cur?' pb2-step--cur':'');
+      var done=pbStageDone(s);
+      var cls=done?' pb2-step--done':(i===cur?' pb2-step--cur':'');
       return '<button type="button" class="pb2-step'+cls+'" data-stage="'+s.key+'">'
-        +'<span class="pb2-stepdot">'+(s.gate?PB_CHECK:(i+1))+'</span>'
+        +'<span class="pb2-stepdot">'+(done?PB_CHECK:(i+1))+'</span>'
         +'<span class="pb2-steplabel">'+esc(s.name)+'</span>'
         +(i===cur?'<span class="pb2-here">YOU ARE HERE</span>':'')
         +'</button>';
@@ -1023,65 +994,61 @@ tbody tr:hover{background:var(--surface-hover)}
       return '<div class="pb2-next"><span class="pb2-next__label">All done</span>'
         +'<div class="pb2-next__main"><b>All '+state.playbook.length+' stages complete</b> — review Results and capture the lessons.</div>'+daysHtml+'</div>';
     }
+    // The current stage always has an unchecked activity — completion is
+    // derived from the checkboxes, so a fully checked stage is already done.
     var s=state.playbook[cur],act=null;
     for(var i=0;i<s.acts.length;i++){ if(!s.acts[i].d){act=s.acts[i];break;} }
-    var main;
-    if(act){
-      var due=pbFmtDue(act.dt);
-      main='<b>'+esc(pbActText(act))+'</b> · '+esc(pbOwnerLabel(act.o))+(due?' · due '+esc(due):'');
-    } else {
-      main='All activities checked — press Confirm Stage Complete to finish <b>'+esc(s.name)+'</b>.';
-    }
+    var main=act
+      ?'<b>'+esc(pbActText(act))+'</b> · '+esc(pbOwnerLabel(act.o))
+      :'<b>'+esc(s.name)+'</b> is complete.';
     return '<div class="pb2-next"><span class="pb2-next__label">Do this next · '+esc(s.name)+'</span>'
       +'<div class="pb2-next__main">'+main+'</div>'+daysHtml+'</div>';
   }
   function pbCard(s,i){
     var cur=pbCurrentIdx();
+    var done=pbStageDone(s);
     var doneActs=s.acts.filter(function(a){return a.d;}).length;
     var open=!!(pbOpen&&pbOpen[s.key]);
-    var chip=s.gate?'<span class="pb2-chip pb2-chip--done">Complete</span>'
+    var chip=done?'<span class="pb2-chip pb2-chip--done">Complete</span>'
       :(i===cur?'<span class="pb2-chip pb2-chip--cur">In progress</span>'
       :'<span class="pb2-chip pb2-chip--next">Up next</span>');
     // Event Day's timing label comes from the event's real date.
     var timing=s.key==='eventday'?(fmtRange(state.event.start,state.event.end)||''):s.timing;
     var acts=s.acts.map(function(a,j){
+      // Checked items carry a completion-date stamp (from the note that
+      // evidenced them, or the day they were checked by hand).
+      var when=a.d?pbFmtDue(a.dt):'';
       return '<div class="pb2-act'+(a.d?' pb2-act--done':'')+'" data-stage="'+s.key+'" data-idx="'+j+'">'
         +'<button type="button" class="pb2-tick" aria-label="Mark activity done">'+PB_CHECK+'</button>'
         +'<span class="pb2-acttext">'+esc(pbActText(a))+'</span>'
         +'<button type="button" class="pb2-owner pb2-owner--'+a.o+'" title="Owner — click to switch Recast / '+esc(pbPartnerName())+' / Both">'+esc(pbOwnerLabel(a.o))+'</button>'
-        +'<input type="date" class="pb2-date" value="'+esc(a.dt||'')+'" aria-label="Due date">'
+        +(when?'<span class="pb2-donedate" title="Completed">✓ '+esc(when)+'</span>':'')
         +'</div>';
     }).join('');
-    var gate='<div class="pb2-gate'+(s.gate?' pb2-gate--on':'')+'" data-stage="'+s.key+'">'
-      +'<div class="pb2-gatetext"><b>Exit criteria — this stage is done when:</b>'
-      +'<ul class="pb2-exit">'+s.done_when.map(function(c){return '<li>'+esc(c)+'</li>';}).join('')+'</ul>'
-      +'</div>'
-      +'<button type="button" class="pb2-gatecheck" aria-label="Confirm this stage is complete">'+PB_CHECK+'<span>'+(s.gate?'Stage Complete':'Confirm Stage Complete')+'</span></button>'
-      +'</div>';
     var noteTrim=String(s.note||'').trim();
     var noteSynced=!!(noteTrim&&s.noteSynced===noteTrim);
     var notes='<div class="pb2-notes"><label class="pb2-noteslabel">Descriptions</label>'
       +'<div class="pb2-notewrap">'
-      +'<textarea class="pb2-note" data-stage="'+s.key+'" rows="2" placeholder="Anything the team should know — Save note adds it to this event\'s descriptions.">'+esc(s.note||'')+'</textarea>'
+      +'<textarea class="pb2-note" data-stage="'+s.key+'" rows="2" placeholder="Anything the team should know — Save note adds it to this event\'s descriptions and checks off any activities it shows as completed.">'+esc(s.note||'')+'</textarea>'
       +'<button type="button" class="pb2-mic" data-stage="'+s.key+'" aria-label="Dictate — speak and your words are added to this note" title="Dictate — speak and your words are added to this note">'+PB_MIC+'</button>'
       +'</div>'
       +'<div class="pb2-notefoot">'
       +'<button type="button" class="pb2-notesave" data-stage="'+s.key+'"'+((!noteTrim||noteSynced)?' disabled':'')+'>Save note</button>'
       +'<span class="pb2-notestatus'+(noteSynced?' pb2-notestatus--ok':'')+'">'+(noteSynced?'Added to this event’s descriptions ✓':'')+'</span>'
       +'</div></div>';
-    return '<div class="pb2-card'+(open?' pb2-card--open':'')+(s.gate?' pb2-card--done':'')+'" id="pb2-card-'+s.key+'">'
+    return '<div class="pb2-card'+(open?' pb2-card--open':'')+(done?' pb2-card--done':'')+'" id="pb2-card-'+s.key+'">'
       +'<button type="button" class="pb2-cardhead" data-stage="'+s.key+'">'
-      +'<span class="pb2-cardnum">'+(s.gate?PB_CHECK:(i+1))+'</span>'
+      +'<span class="pb2-cardnum">'+(done?PB_CHECK:(i+1))+'</span>'
       +'<span class="pb2-cardname"><b>'+esc(s.name)+'</b><span class="pb2-cardsub">'+doneActs+'/'+s.acts.length+' done'+(timing?' · '+esc(timing):'')+'</span></span>'
       +chip
       +'<svg class="pb2-chev" viewBox="0 0 20 20" fill="none"><path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
       +'</button>'
-      +'<div class="pb2-cardbody">'+acts+gate+notes+'</div>'
+      +'<div class="pb2-cardbody">'+acts+notes+'</div>'
       +'</div>';
   }
   function renderPlaybook(){
     if(typeof pbStopDictation==='function') pbStopDictation(); // DOM is about to be replaced
-    if(!state.playbook||!state.playbook.length) state.playbook=pbFreshState(state.event.start);
+    if(!state.playbook||!state.playbook.length) state.playbook=pbFreshState();
     if(!pbOpen){
       pbOpen={};
       var c=pbCurrentIdx();
@@ -1090,7 +1057,7 @@ tbody tr:hover{background:var(--surface-hover)}
     var g=pbStagesComplete(),total=state.playbook.length,pct=Math.round(g/total*100);
     var head=''
       +'<div class="pbhead">'
-      +'  <span></span>'
+      +'  <span>'+(pbAiBusy?'<span class="pb2-ai"><span class="spin"></span>Analyzing saved notes…</span>':'')+'</span>'
       +'  <div class="pb2-headmeta"><b>'+g+' / '+total+'</b>stages complete</div>'
       +'</div>';
     var cards=state.playbook.map(pbCard).join('');
@@ -1103,8 +1070,10 @@ tbody tr:hover{background:var(--surface-hover)}
   var PB_NOTES_MARKER='⸻ Team Notes ⸻';
   var pbSaveTimer=null;
   function pbSerialize(){
+    // gate is derived (all activities checked) but still written so the sheet's
+    // Event_Playbook rows keep their existing shape.
     return state.playbook.map(function(s){
-      return {key:s.key,gate:!!s.gate,note:s.note||'',
+      return {key:s.key,gate:pbStageDone(s),note:s.note||'',
         acts:s.acts.map(function(a){return {x:a.x,o:a.o,dt:a.dt||'',d:!!a.d};})};
     });
   }
@@ -1147,25 +1116,29 @@ tbody tr:hover{background:var(--surface-hover)}
     b.classList.add('show');clearTimeout(b._t);b._t=setTimeout(function(){b.classList.remove('show');},1600);
   }
   // Hydrate saved Event_Playbook rows onto the fresh template state: saved
-  // o/dt/d/gate/note win; the template supplies text, labels and any activity
-  // a saved row doesn't cover (so later template edits never orphan old saves).
+  // o/dt/d/note win; the template supplies text, labels and any activity a
+  // saved row doesn't cover (so later template edits never orphan old saves).
+  // Stage completion is derived from the checkboxes, so saved gate rows are
+  // ignored, and dt (the completion date) is only kept on checked activities.
   function pbMergeSaved(saved){
     state.playbook.forEach(function(s){
       var sv=saved[s.key]; if(!sv) return;
-      s.gate=!!sv.gate;
       s.note=String(sv.note||'');
       (sv.acts||[]).forEach(function(a,j){
         var idx=(a&&a.i!=null&&!isNaN(Number(a.i)))?Number(a.i):j;
         var t=s.acts[idx]; if(!t) return;
         if(a.o==='recast'||a.o==='partner'||a.o==='both') t.o=a.o;
-        t.dt=String(a.dt||'');
         t.d=!!a.d;
+        t.dt=t.d?String(a.dt||''):'';
       });
     });
   }
-  // Pull this event's saved playbook from the sheet. Non-blocking, silent on
-  // failure — the fresh template state simply stands (same posture as
-  // listEventContacts).
+  // Pull this event's saved playbook from the sheet, then hand off to the AI
+  // notes analysis (pbAutoCheckFromNotes) — the analysis must run AFTER the
+  // saved state is merged so it only fills in what isn't checked yet. It runs
+  // even when nothing was saved or the load failed: saved description notes
+  // can auto-check a playbook that has never been touched. Non-blocking,
+  // silent on failure (same posture as listEventContacts).
   function loadSavedPlaybook(ev){
     if(!aiConfigured()||!ev||!ev.key) return;
     aiFetch({action:'loadPlaybook',eventKey:ev.key}).then(function(res){
@@ -1175,7 +1148,54 @@ tbody tr:hover{background:var(--surface-hover)}
         pbOpen=null;
         renderPlaybook();
       }
-    }).catch(function(){/* silent — no saved playbook is a normal first-open state */});
+      pbAutoCheckFromNotes(ev);
+    }).catch(function(){
+      if(state.event!==ev) return;
+      pbAutoCheckFromNotes(ev);
+    });
+  }
+  /* ---- AI auto-check: saved description notes → completed activities ----
+     Runs automatically whenever an event is opened (and again after a stage
+     note is saved). Sends this event's playbook activities to the backend,
+     which reads every saved description note for the event from the sheet,
+     asks the AI which activities those notes show as ALREADY COMPLETED, and
+     returns them. Matching activities are checked off with a completion date
+     (the evidencing note's date when the backend can determine it, otherwise
+     today). Accuracy-first: the analysis only ever CHECKS boxes — it never
+     unchecks anything, and anything the user checked stays untouched. */
+  var pbAiBusy=false, pbAiRun=0;
+  function pbAutoCheckFromNotes(ev){
+    if(!aiConfigured()||!ev||!ev.key) return;
+    var run=++pbAiRun;                 // a newer analysis supersedes this one
+    pbAiBusy=true;renderPlaybook();
+    aiFetch({action:'analyzePlaybookNotes',eventKey:ev.key,
+      stages:state.playbook.map(function(s){
+        return {key:s.key,name:s.name,
+          acts:s.acts.map(function(a,j){return {i:j,x:a.x,d:!!a.d};})};
+      })
+    }).then(function(res){
+      if(state.event!==ev||run!==pbAiRun) return;
+      pbAiBusy=false;
+      var applied=0;
+      if(res&&res.ok&&res.checks&&res.checks.length){
+        res.checks.forEach(function(c){
+          var s=pbStage(String(c.stage||'')); if(!s) return;
+          var a=s.acts[Number(c.i)]; if(!a||a.d) return;   // only ever checks, never unchecks
+          a.d=true;
+          a.dt=/^\d{4}-\d{2}-\d{2}$/.test(String(c.date||''))?String(c.date):pbFmtISO(startOfToday());
+          applied++;
+        });
+      }
+      if(applied){
+        pbOpen=null;                   // re-open whatever stage is now current
+        pbQueueSave();
+        toast('✨ '+applied+' activit'+(applied===1?'y':'ies')+' checked off from this event’s saved notes');
+      }
+      renderPlaybook();
+    }).catch(function(){
+      if(state.event!==ev||run!==pbAiRun) return;
+      pbAiBusy=false;renderPlaybook(); // silent — checking stays manual until the next analysis
+    });
   }
   function resultsAnchor(){
     var mtg=nMeeting(),dec=nDeclined(),todo=nTodo();
@@ -1275,10 +1295,10 @@ tbody tr:hover{background:var(--surface-hover)}
   }
 
   // Playbook v2 (delegated): rail jump, card toggle, activity tick, owner
-  // cycle, gate confirm, date change, note edit. Every mutation queues a
-  // debounced save (pbQueueSave). Cards behave as an accordion — selecting a
-  // stage (rail or card header) shows that section and collapses the others,
-  // so it's easy to move back and forth between stages.
+  // cycle, note edit. Every mutation queues a debounced save (pbQueueSave).
+  // Cards behave as an accordion — selecting a stage (rail or card header)
+  // shows that section and collapses the others, so it's easy to move back
+  // and forth between stages.
   el('panel-playbook').addEventListener('click',function(e){
     var step=e.target.closest('.pb2-step');
     if(step){
@@ -1293,32 +1313,29 @@ tbody tr:hover{background:var(--surface-hover)}
       var as=pbStage(actEl.getAttribute('data-stage')),ai=Number(actEl.getAttribute('data-idx'));
       if(!as||!as.acts[ai]) return;
       if(e.target.closest('.pb2-tick')||e.target.closest('.pb2-acttext')){
-        as.acts[ai].d=!as.acts[ai].d;
-        pbQueueSave();renderPlaybook();return;
+        var a=as.acts[ai];
+        a.d=!a.d;
+        // A manual check is completed today; unchecking clears the stamp.
+        a.dt=a.d?pbFmtISO(startOfToday()):'';
+        var nextKey=null;
+        if(a.d&&pbStageDone(as)){
+          // That was the stage's last activity — the stage is now complete:
+          // collapse everything, advance the rail, open the next stage.
+          pbOpen={};
+          var cur=pbCurrentIdx();
+          if(cur<state.playbook.length){nextKey=state.playbook[cur].key;pbOpen[nextKey]=true;}
+        }
+        pbQueueSave();renderPlaybook();
+        if(nextKey){
+          var nc=document.getElementById('pb2-card-'+nextKey);
+          if(nc) nc.scrollIntoView({behavior:'smooth',block:'nearest'});
+        }
+        return;
       }
       if(e.target.closest('.pb2-owner')){
         var seq=['recast','partner','both'];
         as.acts[ai].o=seq[(seq.indexOf(as.acts[ai].o)+1)%seq.length];
         pbQueueSave();renderPlaybook();return;
-      }
-      return; // click on the date input — handled by the change listener
-    }
-    var gc=e.target.closest('.pb2-gatecheck');
-    if(gc){
-      var gw=gc.closest('.pb2-gate'),gs=gw&&pbStage(gw.getAttribute('data-stage'));
-      if(!gs) return;
-      gs.gate=!gs.gate;
-      var nextKey=null;
-      if(gs.gate){
-        // Completed: collapse everything, advance the rail, open the next stage.
-        pbOpen={};
-        var cur=pbCurrentIdx();
-        if(cur<state.playbook.length){nextKey=state.playbook[cur].key;pbOpen[nextKey]=true;}
-      }
-      pbQueueSave();renderPlaybook();
-      if(nextKey){
-        var nc=document.getElementById('pb2-card-'+nextKey);
-        if(nc) nc.scrollIntoView({behavior:'smooth',block:'nearest'});
       }
       return;
     }
@@ -1333,14 +1350,6 @@ tbody tr:hover{background:var(--surface-hover)}
       pbOpen={};if(!wasOpen) pbOpen[hk]=true;
       renderPlaybook();return;
     }
-  });
-  el('panel-playbook').addEventListener('change',function(e){
-    if(!e.target.classList.contains('pb2-date')) return;
-    var actEl=e.target.closest('.pb2-act');if(!actEl) return;
-    var s=pbStage(actEl.getAttribute('data-stage')),i=Number(actEl.getAttribute('data-idx'));
-    if(!s||!s.acts[i]) return;
-    s.acts[i].dt=e.target.value||'';
-    pbQueueSave();renderPlaybook();
   });
   // Reflect note edits on the stage's Save button without a re-render (a
   // render would steal focus from the textarea): enable it when there's
@@ -1472,6 +1481,9 @@ tbody tr:hover{background:var(--surface-hover)}
       pbFlashSaved();
       setStatus(res.duplicate?'Already in this event’s descriptions ✓':'Added to this event’s descriptions ✓','ok');
       // Button stays disabled until the note is edited again.
+      // The saved note may describe completed work — re-run the AI analysis
+      // so its activities get checked off right away.
+      if(!res.duplicate) pbAutoCheckFromNotes(ev);
     }).catch(function(err){
       if(state.event!==ev) return;
       btn.disabled=false;
@@ -2281,11 +2293,13 @@ tbody tr:hover{background:var(--surface-hover)}
     state.fileName=''; state.updated=''; state.aiAnalyzed=false;
     state.search=''; state.filter='all'; state.roleFilter='all';
     savedState={count:0,dirty:false,busy:false};
-    // Playbook: drop any pending save for the previous event, rebuild the seven
-    // stages with due dates derived from THIS event's real date, then merge any
-    // saved Event_Playbook rows on top (non-blocking, silent on failure).
+    // Playbook: drop any pending save for the previous event, rebuild the
+    // seven stages fresh, then merge any saved Event_Playbook rows on top and
+    // auto-check activities from THIS event's saved description notes
+    // (non-blocking, silent on failure — see loadSavedPlaybook).
     clearTimeout(pbSaveTimer);
-    state.playbook=pbFreshState(ev.start);
+    pbAiRun++;pbAiBusy=false;      // supersede any in-flight notes analysis
+    state.playbook=pbFreshState();
     pbOpen=null;
     renderEventHeader();
     rerenderData();
