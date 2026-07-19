@@ -654,9 +654,9 @@ tbody tr:hover{background:var(--surface-hover)}
     var total=state.contacts.length;
     var mtg=nMeeting(),dec=nDeclined(),todo=nTodo(),worked=mtg+dec;
 
-    // Target list bar. With no contacts yet (a freshly opened event that has
-    // none saved), it invites an upload; the AI/Save buttons appear once there
-    // is a list to act on.
+    // Target list bar. Only shown while there are no contacts yet (a freshly
+    // opened event that has none saved), inviting an upload; once a list is
+    // loaded the bar is hidden from the overview.
     var nameLine, subLine, uploadLabel;
     if(total>0){
       nameLine=esc(state.fileName||'Target list')+' <span class="ok">'+total.toLocaleString()+' contacts</span>';
@@ -740,7 +740,7 @@ tbody tr:hover{background:var(--surface-hover)}
       +'<div class="donut__center"><div class="donut__num">'+OWNERS.length+'</div><div class="donut__cap">teams</div></div></div>'
       +legend(ownSegs)+'</div></div></div>';
 
-    el('panel-overview').innerHTML=tlist+kpis+funnel+'<div style="height:16px"></div><div class="grid-3">'+seniority+companies+owners+'</div>';
+    el('panel-overview').innerHTML=(total>0?'':tlist)+kpis+funnel+'<div style="height:16px"></div><div class="grid-3">'+seniority+companies+owners+'</div>';
     el('tab-contacts-count').textContent=total.toLocaleString();
   }
   function kpi(label,num,foot,icon){
