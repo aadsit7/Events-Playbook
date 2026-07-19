@@ -283,7 +283,8 @@ mirror only: the marker section is **never** read back into stage notes
 
 This adds AI lead categorization to the Event Workspace (`index.html`). The
 analysis **runs automatically the moment an Excel/CSV target list is uploaded**,
-and an **"Analyze with AI"** button re-runs it on demand. Both send the contact
+and an **"Analyze with AI"** button starts it on demand for a list that hasn't
+been analyzed yet (once a list is analyzed, the button is hidden). Both send the contact
 list to the Partner Portal web script, which asks a **SaaS demand-generation
 expert persona** to classify each lead. The feature is fully **additive** — if
 the backend is unreachable, the app keeps working exactly as before (the local
@@ -377,9 +378,9 @@ var CONFIG={
 ```
 
 Then just **upload a target list** — AI analysis starts automatically and
-contacts are classified in batches of 20 with a live progress count. The
-**✨ Analyze with AI** button re-runs the analysis on the current list whenever
-you want.
+contacts are classified in batches of 20 with a live progress count. If a list
+hasn't been analyzed yet, the **✨ Analyze with AI** button starts the analysis
+on demand (it disappears once the list is analyzed).
 
 ---
 
