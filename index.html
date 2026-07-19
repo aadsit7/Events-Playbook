@@ -417,7 +417,7 @@ tbody tr:hover{background:var(--surface-hover)}
   </div>
   <div class="topbar__spacer"></div>
   <div class="avatars" id="topbar-avatars"></div>
-  <button class="btn"><svg viewBox="0 0 20 20" fill="none"><circle cx="6" cy="10" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="14" cy="5" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="14" cy="15" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 9l4-2.5M8 11l4 2.5" stroke="currentColor" stroke-width="1.5"/></svg>Share</button>
+  <button class="btn" id="topbar-share"><svg viewBox="0 0 20 20" fill="none"><circle cx="6" cy="10" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="14" cy="5" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="14" cy="15" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 9l4-2.5M8 11l4 2.5" stroke="currentColor" stroke-width="1.5"/></svg>Share</button>
 </div>
 
 <!-- The workspace stays hidden until an event has been selected (and its
@@ -654,9 +654,9 @@ tbody tr:hover{background:var(--surface-hover)}
     var total=state.contacts.length;
     var mtg=nMeeting(),dec=nDeclined(),todo=nTodo(),worked=mtg+dec;
 
-    // Target list bar. With no contacts yet (a freshly opened event that has
-    // none saved), it invites an upload; the AI/Save buttons appear once there
-    // is a list to act on.
+    // Target list bar. Only shown while there are no contacts yet (a freshly
+    // opened event that has none saved), inviting an upload; once a list is
+    // loaded the bar is hidden from the overview.
     var nameLine, subLine, uploadLabel;
     if(total>0){
       nameLine=esc(state.fileName||'Target list')+' <span class="ok">'+total.toLocaleString()+' contacts</span>';
@@ -740,7 +740,7 @@ tbody tr:hover{background:var(--surface-hover)}
       +'<div class="donut__center"><div class="donut__num">'+OWNERS.length+'</div><div class="donut__cap">teams</div></div></div>'
       +legend(ownSegs)+'</div></div></div>';
 
-    el('panel-overview').innerHTML=tlist+kpis+funnel+'<div style="height:16px"></div><div class="grid-3">'+seniority+companies+owners+'</div>';
+    el('panel-overview').innerHTML=(total>0?'':tlist)+kpis+funnel+'<div style="height:16px"></div><div class="grid-3">'+seniority+companies+owners+'</div>';
     el('tab-contacts-count').textContent=total.toLocaleString();
   }
   function kpi(label,num,foot,icon){
@@ -1206,24 +1206,22 @@ tbody tr:hover{background:var(--surface-hover)}
     if(when) meta+='<span class="dot">•</span><span>'+CAL_SVG+esc(when)+'</span>';
     if(ev.location) meta+='<span class="dot">•</span><span>'+PIN_SVG+esc(ev.location)+'</span>';
     var desc=ev.description?'<div class="ehead__desc" title="'+esc(snip(ev.description,600))+'">'+esc(snip(ev.description,300))+'</div>':'';
-    var actions=aiConfigured()
-      ?'<div class="ehead__actions"><button class="btn js-change-event"><svg viewBox="0 0 20 20" fill="none"><path d="M16.5 10a6.5 6.5 0 11-1.9-4.6M16.5 2.5v3h-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Change event</button></div>'
-      :'';
     el('ehead').innerHTML=''
       +'<div>'
       +'  <div class="ehead__title">'+esc(ev.title)+'</div>'
       +'  <div class="ehead__meta">'+meta+'</div>'
       +   desc
       +'  <div class="shared" id="shared-line"></div>'
-      +'</div>'
-      + actions;
+      +'</div>';
     renderShared();
   }
 
   /* ================= shared header avatars ================= */
   function renderShared(){
-    var people=[{n:'Aaron Adsit',r:'Recast'},{n:'Nerdio Team',r:'Partner'},{n:'Field Marketing',r:'Marketing'}];
-    el('topbar-avatars').innerHTML=people.map(function(p){return '<span class="av" title="'+esc(p.n)+'" style="background:'+avColor(p.n)+'">'+initials(p.n)+'</span>';}).join('');
+    // Once an event has loaded, the topbar avatars and Share button are no
+    // longer needed — hide them for the logged-in view.
+    el('topbar-avatars').style.display='none';
+    el('topbar-share').style.display='none';
     el('shared-line').innerHTML='<svg viewBox="0 0 20 20" width="15" height="15" fill="none" style="color:var(--muted)"><circle cx="7" cy="7" r="2.4" stroke="currentColor" stroke-width="1.5"/><path d="M2.5 16.5c0-2.6 2-4.3 4.5-4.3s4.5 1.7 4.5 4.3" stroke="currentColor" stroke-width="1.5"/><circle cx="14" cy="7.5" r="1.9" stroke="currentColor" stroke-width="1.5"/></svg>'
       +'Shared workspace · <strong>Recast</strong> + <strong>Nerdio</strong> (Partner) + <strong>Field Marketing</strong>';
   }
