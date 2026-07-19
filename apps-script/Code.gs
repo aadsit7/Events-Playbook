@@ -1,32 +1,43 @@
 /**
  * Partner Portal — Event Workspace backend (Google Apps Script web app)
  * ---------------------------------------------------------------------
- * This is the existing web script with additive capabilities bolted on:
- *   - `categorizeLeads` — runs the "Event Lead Categorizer" SaaS demand-gen
- *     persona over an uploaded contact list.
- *   - `listEvents` — returns the non-completed rows of the Events tab as a
- *     minimal picker payload (no descriptions, no passwords) so the workspace
- *     can offer a "browse all events" fallback picker.
- *   - `findEventsByPassword` — takes a password the user typed and returns the
- *     minimal picker payload for every non-completed event whose password
- *     matches it (exact match after trimming). This powers the password-first
- *     gate: the user enters a password and we hand back only the event(s) it
- *     unlocks. No passwords are ever returned; an empty password matches nothing.
- *   - `openEvent` — verifies the selected event's password (the `password`
- *     column of the Events tab) SERVER-SIDE and only then returns the full
- *     event row. The password never travels to the browser.
+ * COMPLETE SCRIPT — replaces the whole file. Paste over everything in
+ * the Apps Script editor, then deploy a NEW VERSION (see bottom note).
  *
- * NOTHING existing was changed. All original actions
- * (uploadFile / listFiles / deleteFile / analyzeDocument / updateDescription /
- * getConfig) behave exactly as before. The only edits are:
- *   1. new `categorizeLeads` / `listEvents` / `findEventsByPassword` /
- *      `openEvent` branches in doPost()
- *   2. the new functions at the bottom of this file (clearly fenced)
+ * Actions served:
+ *   Portal + playbook shared:
+ *     uploadFile / listFiles / deleteFile / analyzeDocument /
+ *     updateDescription / getConfig
+ *   Playbook (Event Workspace):
+ *     categorizeLeads / listEvents / openEvent / saveEventContacts /
+ *     listEventContacts / savePlaybook / loadPlaybook / saveStageNote
  *
- * Deploy: Extensions > Apps Script > Deploy > New deployment > Web app
+ *     NEW: savePlaybook / loadPlaybook persist each event's 6-stage playbook
+ *     (activities, owners, due dates, gates, stage descriptions) to the
+ *     Event_Playbook tab. saveStageNote appends one stage's description as a
+ *     new dated row in the Event_Descriptions tab — the text starts with the
+ *     stage title, then the notes, then the save date — so it surfaces in the
+ *     portal's Descriptions list for that event. All three are purely
+ *     additive: they create/extend only the Event_Playbook and
+ *     Event_Descriptions tabs and touch no portal action or tab.
+ *   Portal (event modal "Analyze" on attached documents):
+ *     analyzeDocument with analysisType:'attendee_list' — extracts the
+ *     attendee list deterministically, classifies titles with the SAME
+ *     "Event Lead Categorizer" persona the playbook uses, and returns
+ *     HTML card(s) + a structured contacts array. The portal writes the
+ *     contact rows to Event_Contacts itself.
+ *
+ *     NEW: contacts still missing fields the file didn't contain (job
+ *     title, company, ICP classification) are researched ONLINE via
+ *     Claude's web-search tool, using the info the file DID provide
+ *     (name, email domain, company). Only verified findings are filled;
+ *     anything unconfirmed stays blank rather than guessed. Web-sourced
+ *     values carry an ai_rationale starting with "Web:".
+ *
+ * Deploy: Extensions > Apps Script > Deploy > Manage deployments >
+ *   Edit (pencil) > Version: New version > Deploy.
  *   - Execute as:      Me
  *   - Who has access:  Anyone            <-- REQUIRED so the browser page can call it
- * Then copy the /exec URL into CONFIG.webAppUrl in index.html.
  */
 
 var SHEET_ID = '18Yhe3Yiq9_eI7kBxtFOzdu6Pb0_VUx730TYjq1xPjzI';
@@ -50,6 +61,11 @@ function doPost(e) {
     }
 
     if (payload.action === 'analyzeDocument') {
+      // The portal's event modal sends analysisType:'attendee_list'.
+      // When absent (the Opportunities flow), behavior is exactly as before.
+      if (payload.analysisType === 'attendee_list') {
+        return doAnalyzeAttendeeList(payload);
+      }
       return doAnalyzeDocument(payload.docId, payload.driveUrl);
     }
 
@@ -57,42 +73,37 @@ function doPost(e) {
       return handleUpdateDescription(payload);
     }
 
-    // NEW — classify an uploaded lead list with the SaaS demand-gen persona.
+    // Classify an uploaded lead list with the SaaS demand-gen persona.
     if (payload.action === 'categorizeLeads') {
       return doCategorizeLeads(payload);
     }
 
-    // NEW — return every row of the Events tab so the workspace can offer an
+    // Return every row of the Events tab so the workspace can offer an
     // event picker on load and prepopulate itself from the selected event.
     if (payload.action === 'listEvents') {
       return doListEvents();
     }
 
-    // NEW — resolve a typed password to the event(s) it unlocks, so the gate
-    // can start with the password instead of an event dropdown.
-    if (payload.action === 'findEventsByPassword') {
-      return doFindEventsByPassword(payload);
-    }
-
-    // NEW — open one event by key, verifying its password (if the Events tab
+    // Open one event by key, verifying its password (if the Events tab
     // has one for that row) before returning the full details.
     if (payload.action === 'openEvent') {
       return doOpenEvent(payload);
     }
 
-    // NEW — persist the uploaded (and AI-categorized) contact list for an event
+    // Persist the uploaded (and AI-categorized) contact list for an event
     // into the Event_Contacts tab so it can be referenced on later opens.
     if (payload.action === 'saveEventContacts') {
       return doSaveEventContacts(payload);
     }
 
-    // NEW — read back the contacts previously saved for one event so the
+    // Read back the contacts previously saved for one event so the
     // workspace can prepopulate itself when the event is reopened.
     if (payload.action === 'listEventContacts') {
       return doListEventContacts(payload);
     }
 
-    // NEW — playbook stage state, keyed by event like Event_Contacts.
+    // NEW — playbook stage state (activities, gates, stage descriptions),
+    // keyed by event like Event_Contacts.
     if (payload.action === 'savePlaybook') {
       return doSavePlaybook(payload);
     }
@@ -100,7 +111,7 @@ function doPost(e) {
       return doLoadPlaybook(payload);
     }
 
-    // NEW — append one playbook stage note as a dated row in the
+    // NEW — append one playbook stage description as a dated row in the
     // Event_Descriptions tab, so it surfaces in the portal's Descriptions
     // list for the event.
     if (payload.action === 'saveStageNote') {
@@ -153,10 +164,28 @@ function doUploadFile(payload) {
   }
 
   var docId = 'DOC' + Date.now();
-  sheet.appendRow([docId, payload.opportunityId, customerName, payload.fileName, payload.mimeType, file.getUrl(), new Date().toISOString().slice(0, 10), 'FALSE']);
+  var dateAdded = new Date().toISOString().slice(0, 10);
+  sheet.appendRow([docId, payload.opportunityId, customerName, payload.fileName, payload.mimeType, file.getUrl(), dateAdded, 'FALSE']);
 
-  return ContentService.createTextOutput(JSON.stringify({ ok: true, doc_id: docId, url: file.getUrl(), name: payload.fileName }))
-    .setMimeType(ContentService.MimeType.JSON);
+  // The `file` object matches what the portal's documents panel expects so a
+  // freshly uploaded file's link works immediately. The old top-level keys
+  // (doc_id / url / name) are kept for anything that already reads them.
+  return ContentService.createTextOutput(JSON.stringify({
+    ok: true,
+    doc_id: docId,
+    url: file.getUrl(),
+    name: payload.fileName,
+    file: {
+      doc_id: docId,
+      opportunity_id: payload.opportunityId,
+      customer_name: customerName,
+      file_name: payload.fileName,
+      mime_type: payload.mimeType,
+      drive_url: file.getUrl(),
+      date_added: dateAdded,
+      analyzed: 'FALSE'
+    }
+  })).setMimeType(ContentService.MimeType.JSON);
 }
 
 // ============================================================
@@ -207,14 +236,12 @@ function doDeleteFile(docId) {
 
 // ============================================================
 // ANALYZE DOCUMENT — Extract text from Drive file, send to Claude
+// (generic path — used by Opportunities, unchanged behavior)
 // ============================================================
 
 function doAnalyzeDocument(docId, driveUrl) {
-  // Extract file ID from the Drive URL
-  var fileId = extractFileId(driveUrl);
-  if (!fileId) throw new Error('Could not extract file ID from URL: ' + driveUrl);
-
-  var file = DriveApp.getFileById(fileId);
+  var file = resolveDriveFile_({ docId: docId, driveUrl: driveUrl });
+  var fileId = file.getId();
   var mimeType = file.getMimeType();
   var fileName = file.getName();
   var extractedText = '';
@@ -241,9 +268,10 @@ function doAnalyzeDocument(docId, driveUrl) {
     extractedText = doc.getBody().getText();
     DriveApp.getFileById(tempDoc.id).setTrashed(true);
   } else if (mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-             mimeType === 'application/vnd.ms-excel') {
-    // Excel — convert to Google Sheet, extract text from EVERY worksheet so a
-    // multi-tab workbook is analyzed in full, not just its first tab.
+             mimeType === 'application/vnd.ms-excel' ||
+             mimeType === 'application/vnd.ms-excel.sheet.macroEnabled.12') {
+    // Excel (.xlsx / .xls / .xlsm) — convert to Google Sheet, extract text from
+    // EVERY worksheet so a multi-tab workbook is analyzed in full.
     var tempSheet = Drive.Files.copy(
       { title: 'TEMP_ANALYZE_' + Date.now(), mimeType: 'application/vnd.google-apps.spreadsheet' },
       fileId
@@ -259,6 +287,8 @@ function doAnalyzeDocument(docId, driveUrl) {
     }
     extractedText = parts.join('\n\n');
     DriveApp.getFileById(tempSheet.id).setTrashed(true);
+  } else if (mimeType === 'text/csv' || /\.csv$/i.test(fileName)) {
+    extractedText = file.getBlob().getDataAsString('UTF-8');
   } else if (mimeType === 'text/plain') {
     extractedText = file.getBlob().getDataAsString();
   } else {
@@ -333,27 +363,7 @@ function doAnalyzeDocument(docId, driveUrl) {
   formattedHtml = formattedHtml.replace(/```html\s*/gi, '').replace(/```\s*/g, '').trim();
 
   // Mark document as analyzed in the sheet
-  var ss = SpreadsheetApp.openById(SHEET_ID);
-  var sheet = ss.getSheetByName('Opportunity_Documents');
-  if (sheet) {
-    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
-    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-    var analyzedIdx = headers.indexOf('analyzed');
-
-    // Add 'analyzed' column if it doesn't exist
-    if (analyzedIdx === -1) {
-      var newCol = sheet.getLastColumn() + 1;
-      sheet.getRange(1, newCol).setValue('analyzed');
-      analyzedIdx = newCol - 1;
-    }
-
-    for (var j = 0; j < data.length; j++) {
-      if (data[j][0] == docId) {
-        sheet.getRange(j + 2, analyzedIdx + 1).setValue('TRUE');
-        break;
-      }
-    }
-  }
+  markDocumentAnalyzed_(docId);
 
   return ContentService.createTextOutput(JSON.stringify({
     ok: true,
@@ -400,12 +410,18 @@ function handleUpdateDescription(payload) {
 // ============================================================
 
 function extractFileId(url) {
-  // Handle various Google Drive URL formats
+  // Handle various Google Drive URL formats. Order matters: the path-based
+  // /d/<id> patterns cover drive.google.com/file/d/... AND
+  // docs.google.com/spreadsheets|document|presentation/d/... (the form Drive
+  // uses for Office files it opens in Sheets/Docs), and they must run BEFORE
+  // the query-param pattern. The id= pattern requires a ? or & directly
+  // before it — a bare /id=/ also matches inside "&ouid=1052781702..."
+  // (the viewer's ACCOUNT id that Drive appends to share links), which is
+  // exactly the wrong value to feed to getFileById.
   var patterns = [
     /\/file\/d\/([a-zA-Z0-9_-]+)/,
-    /id=([a-zA-Z0-9_-]+)/,
     /\/d\/([a-zA-Z0-9_-]+)/,
-    /open\?id=([a-zA-Z0-9_-]+)/
+    /[?&]id=([a-zA-Z0-9_-]+)/
   ];
   for (var i = 0; i < patterns.length; i++) {
     var match = url.match(patterns[i]);
@@ -415,10 +431,72 @@ function extractFileId(url) {
 }
 
 // ============================================================
+// UTILITY — Resolve the Drive file for an analyze request
 // ============================================================
-// NEW — LEAD CATEGORIZATION (SaaS demand-gen persona)
-// Everything below this line is additive. It does not touch any
-// existing tab, action, or behavior.
+// Tries every plausible ID: the one embedded in the drive_url the portal
+// sends, then the docId itself (only when it is actually shaped like a
+// Drive file ID — portal doc_ids like "DOC1739..." are skipped so they
+// can never trigger DriveApp's cryptic "Unexpected error while getting
+// the method or property getFileById on object DriveApp" failure).
+// Fails with a readable error naming both values when nothing opens.
+
+function resolveDriveFile_(payload) {
+  var candidates = [];
+  var fromUrl = extractFileId(String(payload.driveUrl || ''));
+  if (fromUrl) candidates.push(fromUrl);
+  if (payload.docId) candidates.push(String(payload.docId));
+
+  var lastErr = null;
+  for (var i = 0; i < candidates.length; i++) {
+    var id = candidates[i];
+    // Drive file IDs are long [-_A-Za-z0-9] strings that always contain
+    // letters; skip obvious non-IDs (short portal keys, all-digit account
+    // ids from &ouid= params) instead of letting getFileById throw.
+    if (!/^[-\w]{20,}$/.test(id) || /^\d+$/.test(id)) continue;
+    try {
+      return DriveApp.getFileById(id);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw new Error('Could not open the attached file in Drive (docId: '
+    + (payload.docId || 'none') + ', driveUrl: ' + (payload.driveUrl || 'none') + ')'
+    + (lastErr ? ' — last Drive error: ' + lastErr : '')
+    + '. Check that the document row has a valid drive_url.');
+}
+
+// ============================================================
+// UTILITY — Mark a document row as analyzed in Opportunity_Documents
+// (shared by the generic and attendee-list analyze paths)
+// ============================================================
+
+function markDocumentAnalyzed_(docId) {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName('Opportunity_Documents');
+  if (!sheet || sheet.getLastRow() < 2) return;
+
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var analyzedIdx = headers.indexOf('analyzed');
+
+  // Add 'analyzed' column if it doesn't exist
+  if (analyzedIdx === -1) {
+    var newCol = sheet.getLastColumn() + 1;
+    sheet.getRange(1, newCol).setValue('analyzed');
+    analyzedIdx = newCol - 1;
+  }
+
+  for (var j = 0; j < data.length; j++) {
+    if (data[j][0] == docId) {
+      sheet.getRange(j + 2, analyzedIdx + 1).setValue('TRUE');
+      break;
+    }
+  }
+}
+
+// ============================================================
+// ============================================================
+// LEAD CATEGORIZATION (SaaS demand-gen persona)
 // ============================================================
 // ============================================================
 
@@ -479,30 +557,7 @@ function doCategorizeLeads(payload) {
     '\n\nReturn ONLY the JSON array described above — one object per lead, in the same order, ' +
     'echoing each "index" value exactly as given. No prose, no markdown code fences.';
 
-  var response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
-    method: 'post',
-    contentType: 'application/json',
-    headers: {
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01'
-    },
-    payload: JSON.stringify({
-      model: 'claude-sonnet-5',
-      max_tokens: 8000,
-      messages: [{ role: 'user', content: prompt }]
-    }),
-    muteHttpExceptions: true
-  });
-
-  var result = JSON.parse(response.getContentText());
-  if (result && result.error) throw new Error('Anthropic API error: ' + result.error.message);
-
-  var text = '';
-  if (result.content && Array.isArray(result.content)) {
-    for (var i = 0; i < result.content.length; i++) {
-      if (result.content[i].type === 'text') text += result.content[i].text;
-    }
-  }
+  var text = callClaudeText_(prompt, 8000, 'claude-sonnet-5');
   if (!text) throw new Error('Categorizer returned no output');
 
   text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
@@ -560,6 +615,117 @@ function getCategorizerInstructions() {
 
 function jsonOut(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * callClaudeText_
+ * Shared Anthropic API caller: sends one prompt, returns the response text.
+ * Throws a readable error on API failures or a safety refusal.
+ */
+function callClaudeText_(prompt, maxTokens, model) {
+  if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set in this project’s Script Properties');
+
+  var response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01'
+    },
+    payload: JSON.stringify({
+      model: model || 'claude-opus-4-8',
+      max_tokens: maxTokens || 4096,
+      messages: [{ role: 'user', content: prompt }]
+    }),
+    muteHttpExceptions: true
+  });
+
+  var result = JSON.parse(response.getContentText());
+  if (result && result.error) throw new Error('Anthropic API error: ' + result.error.message);
+  if (result && result.stop_reason === 'refusal') throw new Error('Claude declined to analyze this content');
+
+  var text = '';
+  if (result.content && Array.isArray(result.content)) {
+    for (var i = 0; i < result.content.length; i++) {
+      if (result.content[i].type === 'text') text += result.content[i].text;
+    }
+  }
+  return text;
+}
+
+/**
+ * callClaudeWithWebSearch_
+ * Same API, but with Anthropic's server-side web-search tool enabled —
+ * Anthropic runs the searches, so no extra Apps Script services or search
+ * API keys are needed. The response interleaves search blocks with text
+ * blocks; the strict-JSON answer is in the LAST text block (earlier ones
+ * are pre-search narration). Long research turns can return stop_reason
+ * "pause_turn" — the API asks us to send the partial content back and let
+ * it continue, so we loop a few times.
+ */
+function callClaudeWithWebSearch_(prompt, maxTokens) {
+  if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set in this project’s Script Properties');
+
+  var messages = [{ role: 'user', content: prompt }];
+
+  for (var attempt = 0; attempt < 4; attempt++) {
+    var response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      payload: JSON.stringify({
+        model: 'claude-opus-4-8',
+        max_tokens: maxTokens || 8000,
+        tools: [{
+          type: 'web_search_20250305',
+          name: 'web_search',
+          max_uses: WEB_ENRICH_MAX_SEARCHES
+        }],
+        messages: messages
+      }),
+      muteHttpExceptions: true
+    });
+
+    var result = JSON.parse(response.getContentText());
+    if (result && result.error) throw new Error('Anthropic API error: ' + result.error.message);
+    if (result && result.stop_reason === 'refusal') throw new Error('Claude declined to research these contacts');
+    if (result && result.stop_reason === 'pause_turn') {
+      messages.push({ role: 'assistant', content: result.content });
+      continue;
+    }
+
+    var text = '';
+    if (result.content && Array.isArray(result.content)) {
+      for (var i = 0; i < result.content.length; i++) {
+        if (result.content[i].type === 'text') text = result.content[i].text;
+      }
+    }
+    return text;
+  }
+  throw new Error('Web search research did not finish');
+}
+
+/**
+ * parseJsonLoose_
+ * Tolerant JSON parse: strips markdown fences and stray prose around the
+ * JSON if the model ever wraps its answer despite the strict-JSON rules.
+ */
+function parseJsonLoose_(text) {
+  if (!text) return null;
+  var cleaned = String(text).trim()
+    .replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+  var start = cleaned.search(/[\[{]/);
+  if (start > 0) cleaned = cleaned.slice(start);
+  var end = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'));
+  if (end >= 0) cleaned = cleaned.slice(0, end + 1);
+  try {
+    return JSON.parse(cleaned);
+  } catch (err) {
+    return null;
+  }
 }
 
 /**
@@ -656,49 +822,9 @@ function doListEvents() {
 }
 
 /**
- * doFindEventsByPassword
- * Input payload: { action:'findEventsByPassword', password:'<user input>' }
- * Returns the SAME minimal picker payload as listEvents, but only for the
- * non-completed events whose password matches the supplied value (exact match
- * after trimming — the identical comparison openEvent uses). This powers the
- * password-first gate: the user types a password and we hand back only the
- * event(s) it unlocks, so a single match can open straight away and several
- * events sharing one password can be listed for the user to choose from.
- *
- * Security: passwords themselves are NEVER returned (only matched titles/dates,
- * which the user has already proven they may see by knowing the password). An
- * empty/blank password matches nothing — password-less events are reached via
- * the listEvents "browse all" fallback, not by submitting an empty password.
- */
-function doFindEventsByPassword(payload) {
-  var given = String(payload.password == null ? '' : payload.password).trim();
-  if (given === '') {
-    return jsonOut({ ok: true, events: [] });
-  }
-  var rows = readEventRows();
-  var events = [];
-  for (var i = 0; i < rows.length; i++) {
-    var r = rows[i];
-    if (isCompletedEvent(r)) continue;
-    if (eventPasswordOf(r) !== given) continue;
-    events.push({
-      key: eventKeyOf(r),
-      title: r.title,
-      event_date: r.event_date || '',
-      end_date: r.end_date || '',
-      event_type: r.event_type || '',
-      location: r.location || '',
-      status: r.status || '',
-      has_password: true
-    });
-  }
-  return jsonOut({ ok: true, events: events });
-}
-
-/**
  * doOpenEvent
  * Input payload: { action:'openEvent', eventKey:'<key from listEvents>', password:'<user input>' }
- * Verifies the password against the row's `password` cell (exact match after
+ * Verifies the password against the row's password cell (exact match after
  * trimming; rows with an empty password cell are open to everyone) and only
  * then returns the full event row — minus the password itself. The check runs
  * here, server-side, so the password never travels to the browser. Completed
@@ -797,12 +923,7 @@ var DEFAULT_CATEGORIZER_INSTRUCTIONS = [
 
 // ============================================================
 // ============================================================
-// NEW — EVENT CONTACTS (per-event target list, saved back to the sheet)
-// Everything below this line is additive. It reads and writes ONLY a new
-// `Event_Contacts` tab (created on first save, exactly like the existing
-// `Opportunity_Documents` tab is), and — best-effort — refreshes the
-// `lead_count` cell of the matching Events row. No existing tab, row, action,
-// or behavior is changed.
+// EVENT CONTACTS (per-event target list, saved back to the sheet)
 // ============================================================
 // ============================================================
 
@@ -883,6 +1004,9 @@ function eventContactRowFor(headers, eventKey, eventTitle, fileName, stamp, c) {
  * convenience the matching Events row's `lead_count` cell is refreshed to the
  * saved count (best-effort — never fatal).
  *
+ * A script lock guards the read-clear-rewrite so two simultaneous saves can
+ * never interleave and corrupt the tab.
+ *
  * Output: { ok:true, saved:<n>, event_id:<key> }
  */
 function doSaveEventContacts(payload) {
@@ -893,43 +1017,49 @@ function doSaveEventContacts(payload) {
   // Safety cap: a single save can never write an unbounded number of rows.
   if (contacts.length > 5000) contacts = contacts.slice(0, 5000);
 
-  var ss = SpreadsheetApp.openById(SHEET_ID);
-  var sheet = getEventContactsSheet(ss);
-  var numCols = sheet.getLastColumn();
-  var headers = sheet.getRange(1, 1, 1, numCols).getValues()[0].map(function (h) { return String(h || '').trim(); });
-  var idIdx = headers.indexOf('event_id');
-  if (idIdx === -1) throw new Error('Event_Contacts is missing its event_id column');
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = getEventContactsSheet(ss);
+    var numCols = sheet.getLastColumn();
+    var headers = sheet.getRange(1, 1, 1, numCols).getValues()[0].map(function (h) { return String(h || '').trim(); });
+    var idIdx = headers.indexOf('event_id');
+    if (idIdx === -1) throw new Error('Event_Contacts is missing its event_id column');
 
-  // Keep every existing row that belongs to a DIFFERENT event.
-  var kept = [];
-  if (sheet.getLastRow() > 1) {
-    var existing = sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols).getValues();
-    for (var i = 0; i < existing.length; i++) {
-      var rowKey = String(existing[i][idIdx] == null ? '' : existing[i][idIdx]).trim();
-      if (rowKey === '') continue;          // drop stray blank rows
-      if (rowKey !== key) kept.push(existing[i]);
+    // Keep every existing row that belongs to a DIFFERENT event.
+    var kept = [];
+    if (sheet.getLastRow() > 1) {
+      var existing = sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols).getValues();
+      for (var i = 0; i < existing.length; i++) {
+        var rowKey = String(existing[i][idIdx] == null ? '' : existing[i][idIdx]).trim();
+        if (rowKey === '') continue;          // drop stray blank rows
+        if (rowKey !== key) kept.push(existing[i]);
+      }
     }
+
+    var eventTitle = String(payload.eventTitle == null ? '' : payload.eventTitle);
+    var fileName = String(payload.fileName == null ? '' : payload.fileName);
+    var stamp = new Date().toISOString();
+    var fresh = contacts.map(function (c) {
+      return eventContactRowFor(headers, key, eventTitle, fileName, stamp, c);
+    });
+
+    var all = kept.concat(fresh);
+
+    // Rewrite the whole data area in one batched write, then clear any leftover
+    // trailing rows (when the new total is shorter than what was there before).
+    var prevRows = sheet.getLastRow() - 1;
+    if (prevRows > 0) sheet.getRange(2, 1, prevRows, numCols).clearContent();
+    if (all.length) sheet.getRange(2, 1, all.length, numCols).setValues(all);
+
+    // Best-effort: keep the Events tab's lead_count in step with what we saved.
+    try { updateEventLeadCount(ss, key, fresh.length); } catch (e) { /* non-fatal */ }
+
+    return jsonOut({ ok: true, saved: fresh.length, event_id: key });
+  } finally {
+    lock.releaseLock();
   }
-
-  var eventTitle = String(payload.eventTitle == null ? '' : payload.eventTitle);
-  var fileName = String(payload.fileName == null ? '' : payload.fileName);
-  var stamp = new Date().toISOString();
-  var fresh = contacts.map(function (c) {
-    return eventContactRowFor(headers, key, eventTitle, fileName, stamp, c);
-  });
-
-  var all = kept.concat(fresh);
-
-  // Rewrite the whole data area in one batched write, then clear any leftover
-  // trailing rows (when the new total is shorter than what was there before).
-  var prevRows = sheet.getLastRow() - 1;
-  if (prevRows > 0) sheet.getRange(2, 1, prevRows, numCols).clearContent();
-  if (all.length) sheet.getRange(2, 1, all.length, numCols).setValues(all);
-
-  // Best-effort: keep the Events tab's lead_count in step with what we saved.
-  try { updateEventLeadCount(ss, key, fresh.length); } catch (e) { /* non-fatal */ }
-
-  return jsonOut({ ok: true, saved: fresh.length, event_id: key });
 }
 
 /**
@@ -996,6 +1126,559 @@ function updateEventLeadCount(ss, eventKey, count) {
       return;
     }
   }
+}
+
+// ============================================================
+// ============================================================
+// ATTENDEE-LIST ANALYSIS (portal event modal "Analyze")
+// Called via analyzeDocument + analysisType:'attendee_list'.
+// Spreadsheets are read deterministically across EVERY tab of the
+// workbook — Claude only decides, per tab, whether it holds an
+// attendee table, where the header row sits, and which column is
+// which, so names/emails can never be hallucinated. Job
+// titles are classified with the SAME "Event Lead Categorizer"
+// persona the playbook uses, so both flows write identical
+// vocabulary into Event_Contacts. Contacts still missing fields the
+// file didn't contain are then researched online via web search
+// (verified findings only). The portal itself writes the contact
+// rows; this handler only returns them.
+// ============================================================
+// ============================================================
+
+var ATTENDEE_MAX_ROWS = 2000;         // hard cap on contacts read from a file (all tabs combined)
+var ATTENDEE_MAX_TABS = 10;           // hard cap on workbook tabs analyzed per file
+var ATTENDEE_HEADER_SCAN_ROWS = 25;   // rows per tab shown to Claude to find the header + map columns
+var ATTENDEE_HTML_PART_LIMIT = 40000; // stay under the 50k Sheets cell cap
+var ATTENDEE_MAX_DOC_CHARS = 60000;   // cap on extracted text for PDFs/Word
+var ATTENDEE_TITLE_BATCH = 100;       // unique titles per classification call
+var ATTENDEE_MAX_TITLE_BATCHES = 3;   // at most 300 unique titles classified
+var WEB_ENRICH_MAX_CONTACTS = 15;     // cap on contacts researched online per run
+var WEB_ENRICH_BATCH_SIZE = 5;        // contacts per web-search API call
+var WEB_ENRICH_MAX_SEARCHES = 15;     // web_search max_uses per API call
+
+function doAnalyzeAttendeeList(payload) {
+  var file = resolveDriveFile_(payload);
+  var fileId = file.getId();
+  var fileName = file.getName();
+  var lower = fileName.toLowerCase();
+
+  var extraction;
+  if (/\.(xlsx|xlsm|csv)$/.test(lower)) {
+    extraction = extractAttendeesFromSpreadsheet_(file, lower);
+  } else {
+    extraction = extractAttendeesFromDocumentText_(file, fileId);
+  }
+
+  var contacts = extraction.contacts;
+
+  // Best-effort: classify job titles with the shared categorizer persona so
+  // icp_role / seniority_tier match what the playbook writes. If this fails,
+  // contacts still return with those fields blank.
+  try {
+    classifyAttendeeTitles_(contacts);
+  } catch (e) { /* non-fatal */ }
+
+  // Best-effort: contacts still missing fields the file didn't contain
+  // (job title, company, ICP classification) are researched ONLINE via
+  // Claude's web-search tool, using the info the file DID provide (name,
+  // email domain, company). Only verified findings are filled — anything
+  // unconfirmed stays blank rather than guessed.
+  try {
+    enrichContactsByWebSearch_(contacts);
+  } catch (e) { /* non-fatal */ }
+
+  var parts = buildAttendeeHtmlParts_(contacts, extraction.note);
+
+  // Persist the analyzed flag on the document row (same tab the generic
+  // analyze path uses), so the portal shows "✓ Analyzed" on reload too.
+  try { markDocumentAnalyzed_(payload.docId); } catch (e) { /* non-fatal */ }
+
+  var out = { ok: true, fileName: fileName, contacts: contacts };
+  if (parts.length > 1) {
+    out.htmlParts = parts;
+  } else {
+    out.html = parts[0] || '<p>No contacts found.</p>';
+  }
+  return jsonOut(out);
+}
+
+// ── Structured files: deterministic read + column-mapping call ─────────
+//
+// EVERY tab of the workbook is analyzed — event lists routinely put the
+// real attendee table on a later tab behind an instructions/cover sheet
+// (e.g. "START HERE" / "1st Party" / "3rd Party"). For each tab, Claude
+// first decides whether the tab contains an attendee table at all and
+// where its header row sits (headers are often a few rows down, below
+// titles and instruction rows); tabs with no attendee data are skipped
+// and named in the summary note. Contacts from all tabs are combined,
+// with exact duplicate emails across tabs removed.
+
+function extractAttendeesFromSpreadsheet_(file, lowerName) {
+  var tabs = [];
+  if (/\.csv$/.test(lowerName)) {
+    tabs.push({ name: '', rows: Utilities.parseCsv(file.getBlob().getDataAsString('UTF-8')) });
+  } else {
+    // .xlsx / .xlsm — convert to a temporary Google Sheet, read EVERY
+    // tab's values, then trash the temp copy (same pattern as the generic
+    // analyze path).
+    var tempSheet = Drive.Files.copy(
+      { title: 'TEMP_ANALYZE_' + Date.now(), mimeType: 'application/vnd.google-apps.spreadsheet' },
+      file.getId()
+    );
+    try {
+      var sheets = SpreadsheetApp.openById(tempSheet.id).getSheets();
+      for (var s = 0; s < sheets.length; s++) {
+        tabs.push({ name: sheets[s].getName(), rows: sheets[s].getDataRange().getValues() });
+      }
+    } finally {
+      DriveApp.getFileById(tempSheet.id).setTrashed(true);
+    }
+  }
+
+  var allContacts = [];
+  var analyzed = [];
+  var skipped = [];
+  var emailSeen = {};
+  var dupes = 0;
+  var tabCount = Math.min(tabs.length, ATTENDEE_MAX_TABS);
+
+  for (var t = 0; t < tabCount; t++) {
+    if (allContacts.length >= ATTENDEE_MAX_ROWS) break;
+    var tab = tabs[t];
+    var label = tab.name ? '"' + tab.name + '"' : 'sheet';
+
+    var res;
+    try {
+      res = extractContactsFromTabRows_(tab.rows, tab.name);
+    } catch (e) {
+      skipped.push(label + ' (error: ' + e.message + ')');
+      continue;
+    }
+    if (!res.contacts.length) {
+      skipped.push(label + ' (' + (res.skipReason || 'no attendee table') + ')');
+      continue;
+    }
+
+    var added = 0;
+    for (var i = 0; i < res.contacts.length && allContacts.length < ATTENDEE_MAX_ROWS; i++) {
+      var c = res.contacts[i];
+      var ekey = (c.email && c.email !== 'Not specified') ? c.email.toLowerCase() : '';
+      if (ekey) {
+        if (emailSeen[ekey]) { dupes++; continue; }
+        emailSeen[ekey] = true;
+      }
+      allContacts.push(c);
+      added++;
+    }
+    analyzed.push(label + ': ' + added + ' contacts' + (res.note ? ' (' + res.note + ')' : ''));
+  }
+
+  // The summary note names every tab and what happened to it, so a skipped
+  // tab is always visible instead of silently missing from the results.
+  var noteParts = [];
+  if (analyzed.length) noteParts.push('Tabs analyzed — ' + analyzed.join('; ') + '.');
+  if (skipped.length) noteParts.push('Tabs skipped — ' + skipped.join('; ') + '.');
+  if (dupes) noteParts.push(dupes + ' duplicate email' + (dupes === 1 ? '' : 's') + ' across tabs removed.');
+  if (tabs.length > tabCount) noteParts.push('Only the first ' + ATTENDEE_MAX_TABS + ' of ' + tabs.length + ' tabs were analyzed.');
+  if (allContacts.length >= ATTENDEE_MAX_ROWS) noteParts.push('Contact list capped at ' + ATTENDEE_MAX_ROWS + ' rows.');
+  if (!allContacts.length && !noteParts.length) noteParts.push('File contained no data rows.');
+
+  return { contacts: allContacts, note: noteParts.join(' ') };
+}
+
+/**
+ * extractContactsFromTabRows_
+ * Analyzes ONE tab's raw values. Claude looks at the first rows and
+ * decides (a) whether this tab holds an attendee/contact table at all,
+ * (b) which row is the header row (often not row 1 — event templates put
+ * titles and instructions above the table), and (c) which column is
+ * which. The contacts themselves are then built deterministically in
+ * code from ALL rows below the header, so names/emails can never be
+ * hallucinated. Tabs with no attendee table return an empty list with a
+ * skipReason instead of throwing, so one instructions tab never aborts
+ * the other tabs.
+ */
+function extractContactsFromTabRows_(rows, tabName) {
+  if (!rows || rows.length < 2) return { contacts: [], skipReason: 'empty tab' };
+
+  // Bound what we show Claude: enough rows to find a late header row,
+  // with wide/verbose cells trimmed so one instructions tab can't blow
+  // up the request. Column indexes stay true to the full row.
+  var scan = rows.slice(0, ATTENDEE_HEADER_SCAN_ROWS).map(function (row) {
+    return row.slice(0, 60).map(function (cell) {
+      var v = (cell === null || cell === undefined) ? '' : String(cell);
+      return v.length > 200 ? v.substring(0, 200) : v;
+    });
+  });
+
+  var prompt =
+    'You are mapping spreadsheet columns for a CRM import. Below are the ' +
+    'first rows of one tab' + (tabName ? ' (named "' + tabName + '")' : '') +
+    ' of an event attendee workbook.\n\n' +
+    'This tab may be an attendee/lead/contact table, OR it may be an ' +
+    'instructions, cover, notes, or configuration tab with no attendee data.\n\n' +
+    'Step 1 — decide whether this tab contains a table of people (event ' +
+    'attendees, leads, or contacts). If it does NOT, return null for ' +
+    'header_row and every column.\n\n' +
+    'Step 2 — if it does, identify:\n' +
+    '- header_row: the ZERO-BASED index, within the rows shown, of the row ' +
+    'containing the column headers. Tables often start a few rows down, ' +
+    'below a title row and instruction rows.\n' +
+    '- The ZERO-BASED column index for each of the following (null when no ' +
+    'column matches):\n' +
+    '  - company: the attendee\'s company or organization\n' +
+    '  - contact_name: the attendee\'s full name in a single column\n' +
+    '  - first_name / last_name: separate name columns, if the sheet splits ' +
+    'them (when a full-name column exists, prefer contact_name and set ' +
+    'these to null)\n' +
+    '  - email: the attendee\'s email address\n' +
+    '  - role_title: the attendee\'s job title or role\n\n' +
+    'Rules:\n' +
+    '- Be concise. Base everything only on what is present in the rows shown.\n' +
+    '- Never guess or fabricate: if you are not confident, use null.\n' +
+    '- Respond in strict JSON only — no prose, no markdown fences.\n\n' +
+    'Respond with exactly this JSON shape:\n' +
+    '{"header_row": <index|null>, "company": <index|null>, ' +
+    '"contact_name": <index|null>, "first_name": <index|null>, ' +
+    '"last_name": <index|null>, "email": <index|null>, ' +
+    '"role_title": <index|null>, ' +
+    '"data_quality_note": "<one short sentence about data quality, or an empty string>"}\n\n' +
+    'ROWS (first ' + scan.length + ' rows of this tab):\n' + JSON.stringify(scan);
+
+  var mapping = parseJsonLoose_(callClaudeText_(prompt, 1024, 'claude-opus-4-8'));
+  if (!mapping || typeof mapping !== 'object') {
+    return { contacts: [], skipReason: 'could not map columns' };
+  }
+
+  var headerRow = mapping.header_row;
+  var hasNameCol = mapping.contact_name != null || mapping.first_name != null || mapping.last_name != null;
+  if (typeof headerRow !== 'number' || headerRow < 0 || (!hasNameCol && mapping.email == null)) {
+    return { contacts: [], skipReason: 'no attendee table' };
+  }
+
+  var dataRows = rows.slice(headerRow + 1, headerRow + 1 + ATTENDEE_MAX_ROWS);
+  var contacts = [];
+  for (var i = 0; i < dataRows.length; i++) {
+    var row = dataRows[i];
+    var name = pickAttendeeCell_(row, mapping.contact_name);
+    if (!name) {
+      var first = pickAttendeeCell_(row, mapping.first_name);
+      var last = pickAttendeeCell_(row, mapping.last_name);
+      name = (first + ' ' + last).trim();
+    }
+    var company = pickAttendeeCell_(row, mapping.company);
+    var email = pickAttendeeCell_(row, mapping.email);
+    var role = pickAttendeeCell_(row, mapping.role_title);
+    // Skip fully-empty rows (common at the bottom of exports).
+    if (!name && !company && !email && !role) continue;
+    contacts.push({
+      name: name || 'Not specified',
+      company: company || 'Not specified',
+      email: email || 'Not specified',
+      role: role || 'Not specified',
+      icp_role: '', seniority_tier: '', ai_confidence: '', ai_rationale: ''
+    });
+  }
+
+  return { contacts: contacts, note: String(mapping.data_quality_note || '') };
+}
+
+function pickAttendeeCell_(row, index) {
+  if (index === null || index === undefined || index < 0) return '';
+  var v = row[index];
+  return (v === null || v === undefined) ? '' : String(v).trim();
+}
+
+// ── Unstructured files (PDF / Word): extraction fallback ───────────────
+
+function extractAttendeesFromDocumentText_(file, fileId) {
+  // Convert to a temporary Google Doc (OCR for PDFs), read the text, trash
+  // the temp copy — same pattern as the generic analyze path.
+  var tempDoc = Drive.Files.copy(
+    { title: 'TEMP_ANALYZE_' + Date.now(), mimeType: 'application/vnd.google-apps.document' },
+    fileId,
+    { ocr: true, ocrLanguage: 'en' }
+  );
+  var text;
+  try {
+    text = DocumentApp.openById(tempDoc.id).getBody().getText();
+  } finally {
+    DriveApp.getFileById(tempDoc.id).setTrashed(true);
+  }
+
+  if (!text || text.trim().length < 20) {
+    return { contacts: [], note: 'No text could be extracted from this file.' };
+  }
+  if (text.length > ATTENDEE_MAX_DOC_CHARS) {
+    text = text.substring(0, ATTENDEE_MAX_DOC_CHARS);
+  }
+
+  var prompt =
+    'Extract the list of event attendees/contacts from the document text below.\n\n' +
+    'Rules:\n' +
+    '- Be concise. Extract only people actually present in the text.\n' +
+    '- Never guess or fabricate names, emails, companies, or titles. Do not ' +
+    'invent or "complete" partial email addresses.\n' +
+    '- If a field is not present for a person, use "Not specified".\n' +
+    '- Respond in strict JSON only — no prose, no markdown fences.\n\n' +
+    'Respond with exactly this JSON shape:\n' +
+    '{"contacts": [{"name": "...", "company": "...", "email": "...", "role": "..."}], ' +
+    '"note": "<one short sentence about data quality, or an empty string>"}\n\n' +
+    'DOCUMENT TEXT:\n' + text;
+
+  var parsed = parseJsonLoose_(callClaudeText_(prompt, 16000, 'claude-opus-4-8'));
+  var raw = (parsed && Array.isArray(parsed.contacts)) ? parsed.contacts : [];
+  var contacts = raw.map(function (c) {
+    return {
+      name: String(c.name || 'Not specified'),
+      company: String(c.company || 'Not specified'),
+      email: String(c.email || 'Not specified'),
+      role: String(c.role || 'Not specified'),
+      icp_role: '', seniority_tier: '', ai_confidence: '', ai_rationale: ''
+    };
+  });
+  return { contacts: contacts, note: String((parsed && parsed.note) || '') };
+}
+
+// ── Title classification via the shared categorizer persona ────────────
+
+/**
+ * classifyAttendeeTitles_
+ * Classifies the UNIQUE job titles (not every contact — a 1,000-person list
+ * usually has far fewer distinct titles) using the same "Event Lead
+ * Categorizer" persona and model as doCategorizeLeads, then maps the results
+ * back onto every contact. This keeps icp_role / seniority_tier values in
+ * Event_Contacts identical no matter which flow wrote them.
+ */
+function classifyAttendeeTitles_(contacts) {
+  var seen = {};
+  var unique = [];
+  for (var i = 0; i < contacts.length; i++) {
+    var t = contacts[i].role;
+    if (!t || t === 'Not specified' || seen[t]) continue;
+    seen[t] = true;
+    unique.push(t);
+  }
+  if (!unique.length) return;
+
+  var instructions = getCategorizerInstructions();
+  var byTitle = {};
+  var maxTitles = Math.min(unique.length, ATTENDEE_TITLE_BATCH * ATTENDEE_MAX_TITLE_BATCHES);
+
+  for (var start = 0; start < maxTitles; start += ATTENDEE_TITLE_BATCH) {
+    var batch = unique.slice(start, start + ATTENDEE_TITLE_BATCH);
+    var leads = batch.map(function (title, idx) {
+      return { index: idx, name: '', company: '', title: title, email: '' };
+    });
+
+    var prompt = instructions +
+      '\n\n=== LEADS TO CATEGORIZE (JSON) ===\n' + JSON.stringify(leads) +
+      '\n\nReturn ONLY the JSON array described above — one object per lead, in the same order, ' +
+      'echoing each "index" value exactly as given. No prose, no markdown code fences.';
+
+    var parsed = parseJsonLoose_(callClaudeText_(prompt, 8000, 'claude-sonnet-5'));
+    var results = Array.isArray(parsed) ? parsed : (parsed && parsed.results) || [];
+    for (var r = 0; r < results.length; r++) {
+      var res = results[r];
+      if (!res || res.index == null || !batch[res.index]) continue;
+      byTitle[batch[res.index]] = res;
+    }
+  }
+
+  for (var c = 0; c < contacts.length; c++) {
+    var hit = byTitle[contacts[c].role];
+    if (!hit) continue;
+    contacts[c].icp_role = String(hit.icp_role || '');
+    contacts[c].seniority_tier = String(hit.seniority_tier || '');
+    contacts[c].ai_confidence = String(hit.confidence || '');
+    contacts[c].ai_rationale = String(hit.rationale || '');
+  }
+}
+
+// ── Fallback enrichment: web search for fields the file didn't have ────
+//
+// Runs AFTER the title pass and touches ONLY contacts that are still
+// incomplete. Accuracy contract: a field may be filled only when a search
+// result confirms it for that specific person or company — anything
+// unverified stays blank. Wrong-but-filled is worse than empty.
+
+function contactNeedsWebEnrichment_(c) {
+  var noRole = !c.role || c.role === 'Not specified';
+  var noCompany = !c.company || c.company === 'Not specified';
+  var noIcp = !c.icp_role || c.icp_role === 'Unknown' || !c.seniority_tier;
+  if (!noRole && !noCompany && !noIcp) return false;
+  // There must be something to search WITH: a name plus either an email
+  // (whose domain can identify the employer) or a known company.
+  var hasName = c.name && c.name !== 'Not specified';
+  var hasEmail = c.email && c.email !== 'Not specified'
+    && String(c.email).indexOf('@') > 0;
+  return !!(hasName && (hasEmail || !noCompany));
+}
+
+function enrichContactsByWebSearch_(contacts) {
+  var pending = [];
+  for (var i = 0; i < contacts.length; i++) {
+    if (contactNeedsWebEnrichment_(contacts[i])) pending.push(i);
+    if (pending.length >= WEB_ENRICH_MAX_CONTACTS) break;
+  }
+  if (!pending.length) return;
+
+  // Small batches keep each API call fast enough to fit several inside
+  // the Apps Script execution limit; one failed batch never blocks the rest.
+  for (var b = 0; b < pending.length; b += WEB_ENRICH_BATCH_SIZE) {
+    var batch = pending.slice(b, b + WEB_ENRICH_BATCH_SIZE);
+    try {
+      enrichBatchByWebSearch_(contacts, batch);
+    } catch (e) { /* non-fatal — this batch keeps its blanks */ }
+  }
+}
+
+function enrichBatchByWebSearch_(contacts, indexes) {
+  var payloadContacts = indexes.map(function (i) {
+    var c = contacts[i];
+    return {
+      id: i,
+      name: c.name === 'Not specified' ? '' : c.name,
+      email: c.email === 'Not specified' ? '' : c.email,
+      company: c.company === 'Not specified' ? '' : c.company,
+      title: c.role === 'Not specified' ? '' : c.role
+    };
+  });
+
+  var prompt =
+    'You are an accuracy-obsessed SaaS marketing demand-generation expert ' +
+    'enriching event-attendee records for a B2B go-to-market team.\n\n' +
+    'Each contact below is missing one or more fields. Use the contact ' +
+    'information provided (name, email domain, company) plus WEB SEARCH to ' +
+    'fill in what is missing:\n' +
+    '- company: if blank, identify the employer — a corporate email domain ' +
+    'is usually the company\'s website domain; verify with a search\n' +
+    '- title: if blank, find the person\'s current job title (LinkedIn, ' +
+    'company team pages, conference speaker bios, press releases)\n' +
+    '- icp_role: classify the VERIFIED title as EXACTLY one of:\n' +
+    '  "Decision Maker" — C-level (CIO, CISO, CTO, CEO, CFO, COO, Chief*), ' +
+    'President, Owner, Founder, Partner, VP/SVP/EVP — budget authority or ' +
+    'final sign-off\n' +
+    '  "Champion" — Director, Senior Director, Head of (team), Manager, ' +
+    'Team Lead, Supervisor — internal owner/driver who needs sign-off\n' +
+    '  "Influencer" — Engineer, Administrator, Analyst, Architect, ' +
+    'Specialist, Coordinator, Consultant, and similar non-management roles\n' +
+    '  "Unknown" — when no title could be verified\n' +
+    '- seniority_tier: EXACTLY one of "C-Suite", "VP", "Director", ' +
+    '"Manager", "Individual" — or an empty string when no title could be ' +
+    'verified\n' +
+    '- confidence: one of "high", "medium", "low"\n' +
+    '- rationale: one short phrase naming the evidence (e.g. "LinkedIn ' +
+    'profile matching name + email domain", "company site team page")\n\n' +
+    'ACCURACY IS THE TOP PRIORITY — above completeness:\n' +
+    '- Fill a field ONLY when a search result confirms it for THIS person ' +
+    'or company specifically (the name AND the employer/email domain must ' +
+    'match). A common name without a confirming employer match is NOT a ' +
+    'match — return an empty string for that field instead of guessing.\n' +
+    '- Never invent titles, companies, or profiles. An empty field is ' +
+    'correct; a wrong field is a failure.\n' +
+    '- Generic email domains (gmail.com, outlook.com, yahoo.com, etc.) do ' +
+    'not identify a company.\n' +
+    '- If search results are outdated or conflicting, prefer the most ' +
+    'recent and lower the confidence accordingly.\n\n' +
+    'When done searching, respond with strict JSON only — no prose, no ' +
+    'markdown fences — in exactly this shape:\n' +
+    '{"contacts": [{"id": <id exactly as given>, "company": "<found or ' +
+    'empty>", "title": "<found or empty>", "icp_role": "<or empty>", ' +
+    '"seniority_tier": "<or empty>", "confidence": "...", ' +
+    '"rationale": "..."}]}\n\n' +
+    'CONTACTS:\n' + JSON.stringify(payloadContacts);
+
+  var parsed = parseJsonLoose_(callClaudeWithWebSearch_(prompt, 8000));
+  if (!parsed || !Array.isArray(parsed.contacts)) return;
+
+  parsed.contacts.forEach(function (r) {
+    if (!r || typeof r.id !== 'number') return;
+    if (indexes.indexOf(r.id) < 0) return; // only touch contacts we sent
+    var c = contacts[r.id];
+    var filled = false;
+    if ((!c.company || c.company === 'Not specified') && r.company) {
+      c.company = String(r.company);
+      filled = true;
+    }
+    if ((!c.role || c.role === 'Not specified') && r.title) {
+      c.role = String(r.title);
+      filled = true;
+    }
+    if ((!c.icp_role || c.icp_role === 'Unknown') && r.icp_role && r.icp_role !== 'Unknown') {
+      c.icp_role = String(r.icp_role);
+      filled = true;
+    }
+    if (!c.seniority_tier && r.seniority_tier) {
+      c.seniority_tier = String(r.seniority_tier);
+      filled = true;
+    }
+    if (!filled) return;
+    if (r.confidence) c.ai_confidence = String(r.confidence);
+    if (r.rationale) {
+      c.ai_rationale = (c.ai_rationale ? c.ai_rationale + ' · ' : '')
+        + 'Web: ' + String(r.rationale);
+    }
+  });
+}
+
+// ── HTML output + chunking ─────────────────────────────────────────────
+
+function buildAttendeeHtmlParts_(contacts, note) {
+  var companies = {};
+  var roleCounts = {};
+  for (var i = 0; i < contacts.length; i++) {
+    var c = contacts[i];
+    if (c.company && c.company !== 'Not specified') companies[c.company] = true;
+    if (c.role && c.role !== 'Not specified') {
+      roleCounts[c.role] = (roleCounts[c.role] || 0) + 1;
+    }
+  }
+  var topRoles = Object.keys(roleCounts)
+    .sort(function (a, b) { return roleCounts[b] - roleCounts[a]; })
+    .slice(0, 3)
+    .map(function (r) { return attendeeEscapeHtml_(r) + ' (' + roleCounts[r] + ')'; });
+
+  var summary = '<p><strong>' + contacts.length + ' contacts · '
+    + Object.keys(companies).length + ' unique companies.</strong>'
+    + (topRoles.length ? ' Top roles: ' + topRoles.join(', ') + '.' : '')
+    + (note ? ' ' + attendeeEscapeHtml_(note) : '')
+    + '</p>';
+
+  var lines = contacts.map(function (c) {
+    return attendeeEscapeHtml_(c.company) + ' — ' + attendeeEscapeHtml_(c.name)
+      + ' — ' + attendeeEscapeHtml_(c.email) + ' — ' + attendeeEscapeHtml_(c.role);
+  });
+
+  // Chunk the line list into <p> blocks, keeping every part (including the
+  // first, which also carries the summary) under the per-cell limit.
+  var parts = [];
+  var current = summary;
+  var block = [];
+
+  function flushBlock() {
+    if (block.length) { current += '<p>' + block.join('<br>') + '</p>'; block = []; }
+  }
+
+  for (var i = 0; i < lines.length; i++) {
+    var pending = block.join('<br>').length + lines[i].length + 16;
+    if (current.length + pending > ATTENDEE_HTML_PART_LIMIT) {
+      flushBlock();
+      parts.push(current);
+      current = '';
+    }
+    block.push(lines[i]);
+    if (block.length >= 50) flushBlock();
+  }
+  flushBlock();
+  if (current) parts.push(current);
+  return parts.length ? parts : [summary];
+}
+
+function attendeeEscapeHtml_(str) {
+  return String(str === undefined || str === null ? '' : str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 // ============================================================
@@ -1174,25 +1857,28 @@ function escapeHtml_(s) {
 }
 
 // Existing Event_Descriptions rows store rich-text HTML, so the note is
-// wrapped the same way: a bold stage header, then the note text with blank
-// lines as paragraph breaks and single newlines as <br>.
-function stageNoteHtml(stageName, note) {
+// wrapped the same way. Fixed shape: the stage title first (bold), then the
+// note text (blank lines as paragraph breaks, single newlines as <br>), then
+// the save date last.
+function stageNoteHtml(stageName, note, dateLabel) {
   var paras = String(note).trim().split(/\n{2,}/).map(function (p) {
     return '<p>' + escapeHtml_(p).replace(/\n/g, '<br>') + '</p>';
   }).join('');
-  return '<p><strong>Playbook — ' + escapeHtml_(stageName) + '</strong></p>' + paras;
+  return '<p><strong>' + escapeHtml_(stageName) + '</strong></p>' + paras
+    + '<p><em>' + escapeHtml_(dateLabel) + '</em></p>';
 }
 
 /**
  * doSaveStageNote
  * Input: { action:'saveStageNote', eventKey, eventTitle, stageKey, stageName, note }
  * Appends ONE new Event_Descriptions row for the event, dated today, with the
- * note rendered as HTML under a "Playbook — <Stage>" header. The event row is
- * resolved with the same readEventRows()/eventKeyOf() join the rest of the
- * backend uses, and the row's own event_id/title win over what the client
- * sent. If an identical description already exists for this event (e.g. the
- * user clicked Save twice), no new row is written and { duplicate:true } is
- * returned — repeated saves can never pile up copies.
+ * note rendered as HTML in a fixed shape: the stage title first, then the
+ * note text, then the save date. The event row is resolved with the same
+ * readEventRows()/eventKeyOf() join the rest of the backend uses, and the
+ * row's own event_id/title win over what the client sent. If an identical
+ * description already exists for this event (e.g. the user clicked Save twice
+ * the same day), no new row is written and { duplicate:true } is returned —
+ * repeated saves can never pile up copies.
  * Output: { ok:true, added:true, description_id } or { ok:true, duplicate:true }
  */
 function doSaveStageNote(payload) {
@@ -1216,9 +1902,12 @@ function doSaveStageNote(payload) {
   var stageKey = String(payload.stageKey == null ? '' : payload.stageKey).trim();
   var stageName = String(payload.stageName == null ? '' : payload.stageName).trim()
     || PB_STAGE_NAMES[stageKey] || stageKey || 'Team note';
-  var html = stageNoteHtml(stageName, note);
 
   var ss = SpreadsheetApp.openById(SHEET_ID);
+  var now = new Date();
+  var tz = ss.getSpreadsheetTimeZone();
+  var html = stageNoteHtml(stageName, note, Utilities.formatDate(now, tz, 'MMMM d, yyyy'));
+
   var sheet = getEventDescriptionsSheet(ss);
   var numCols = sheet.getLastColumn();
   var headers = sheet.getRange(1, 1, 1, numCols).getValues()[0].map(function (h) { return String(h || '').trim(); });
@@ -1236,13 +1925,12 @@ function doSaveStageNote(payload) {
     }
   }
 
-  var now = new Date();
   var descId = 'dsc_' + now.getTime().toString(36) + Math.floor(Math.random() * 1e12).toString(36);
   var map = {
     description_id: descId,
     event_id: eventId,
     title: title,
-    description_date: Utilities.formatDate(now, ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd'),
+    description_date: Utilities.formatDate(now, tz, 'yyyy-MM-dd'),
     description_text: html,
     created_at: now.toISOString()
   };

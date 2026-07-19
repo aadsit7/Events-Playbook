@@ -311,11 +311,17 @@ tbody tr:hover{background:var(--surface-hover)}
 #panel-playbook .pb2-gatetext{font-size:13px;color:var(--text)}
 #panel-playbook .pb2-gatetext b{color:var(--pb-amber)}
 #panel-playbook .pb2-gate--on .pb2-gatetext b{color:var(--pb-green)}
-/* team notes */
+/* stage descriptions box */
 #panel-playbook .pb2-notes{margin-top:12px}
 #panel-playbook .pb2-noteslabel{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gray-light);margin-bottom:6px}
-#panel-playbook .pb2-note{width:100%;font-family:var(--font);font-size:13px;color:var(--ink);background:var(--pb-tint);border:1px solid var(--pb-bord);border-radius:5px;padding:9px 11px;resize:vertical;min-height:44px}
+#panel-playbook .pb2-notewrap{position:relative}
+#panel-playbook .pb2-note{width:100%;font-family:var(--font);font-size:13px;color:var(--ink);background:var(--pb-tint);border:1px solid var(--pb-bord);border-radius:5px;padding:9px 40px 9px 11px;resize:vertical;min-height:44px}
 #panel-playbook .pb2-note:focus{outline:none;border-color:var(--pb-blue)}
+#panel-playbook .pb2-mic{position:absolute;top:7px;right:7px;width:28px;height:28px;border-radius:50%;border:1px solid var(--pb-bord);background:#fff;color:var(--gray-light);display:grid;place-items:center;cursor:pointer;padding:0;transition:color .15s,border-color .15s,background .15s}
+#panel-playbook .pb2-mic svg{width:15px;height:15px}
+#panel-playbook .pb2-mic:hover{color:var(--pb-blue);border-color:var(--pb-blue)}
+#panel-playbook .pb2-mic--on,#panel-playbook .pb2-mic--on:hover{background:#B42318;border-color:#B42318;color:#fff;animation:pb2micpulse 1.4s ease-out infinite}
+@keyframes pb2micpulse{0%{box-shadow:0 0 0 0 rgba(180,35,24,.35)}70%{box-shadow:0 0 0 7px rgba(180,35,24,0)}100%{box-shadow:0 0 0 0 rgba(180,35,24,0)}}
 #panel-playbook .pb2-notefoot{display:flex;align-items:center;gap:10px;margin-top:8px}
 #panel-playbook .pb2-notesave{font-family:var(--font);font-size:12.5px;font-weight:700;color:#fff;background:var(--pb-blue);border:none;border-radius:5px;padding:7px 14px;cursor:pointer;transition:opacity .15s}
 #panel-playbook .pb2-notesave:hover:not(:disabled){opacity:.85}
@@ -865,7 +871,8 @@ tbody tr:hover{background:var(--surface-hover)}
 
   /* ================= PLAYBOOK (v2 — 6-stage partner playbook) =================
      Six lifecycle stages, each with activity rows (checkbox + owner tag + due
-     date), an amber "this stage is done when" exit bar, and a team-notes box.
+     date), an amber "this stage is done when" exit bar, and a Descriptions
+     box (typed or dictated via the mic button — see pbToggleDictation).
      Due dates default to offsets from the opened event's real start date; every
      change is persisted per event to the Event_Playbook tab (debounced — see
      pbQueueSave) and stage notes are mirrored into the Events row's description
@@ -958,6 +965,7 @@ tbody tr:hover{background:var(--surface-hover)}
   }
   function pbFmtDue(dt){var d=parseSheetDate(dt);return d?fmtShort(d):'';}
   var PB_CHECK='<svg viewBox="0 0 14 14" fill="none"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var PB_MIC='<svg viewBox="0 0 20 20" fill="none"><rect x="7.25" y="2.25" width="5.5" height="9.5" rx="2.75" stroke="currentColor" stroke-width="1.5"/><path d="M4.75 9.75a5.25 5.25 0 0010.5 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M10 15.25v2.25M7.5 17.5h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
   function pbRail(){
     var cur=pbCurrentIdx(),g=pbStagesComplete();
     var steps=state.playbook.map(function(s,i){
@@ -1020,8 +1028,11 @@ tbody tr:hover{background:var(--surface-hover)}
       +'</div>';
     var noteTrim=String(s.note||'').trim();
     var noteSynced=!!(noteTrim&&s.noteSynced===noteTrim);
-    var notes='<div class="pb2-notes"><label class="pb2-noteslabel">Notes for the team</label>'
+    var notes='<div class="pb2-notes"><label class="pb2-noteslabel">Descriptions</label>'
+      +'<div class="pb2-notewrap">'
       +'<textarea class="pb2-note" data-stage="'+s.key+'" rows="2" placeholder="Anything the team should know — Save note adds it to this event\'s descriptions.">'+esc(s.note||'')+'</textarea>'
+      +'<button type="button" class="pb2-mic" data-stage="'+s.key+'" aria-label="Dictate — speak and your words are added to this note" title="Dictate — speak and your words are added to this note">'+PB_MIC+'</button>'
+      +'</div>'
       +'<div class="pb2-notefoot">'
       +'<button type="button" class="pb2-notesave" data-stage="'+s.key+'"'+((!noteTrim||noteSynced)?' disabled':'')+'>Save note</button>'
       +'<span class="pb2-notestatus'+(noteSynced?' pb2-notestatus--ok':'')+'">'+(noteSynced?'Added to this event’s descriptions ✓':'')+'</span>'
@@ -1037,6 +1048,7 @@ tbody tr:hover{background:var(--surface-hover)}
       +'</div>';
   }
   function renderPlaybook(){
+    if(typeof pbStopDictation==='function') pbStopDictation(); // DOM is about to be replaced
     if(!state.playbook||!state.playbook.length) state.playbook=pbFreshState(state.event.start);
     if(!pbOpen){
       pbOpen={};
@@ -1278,6 +1290,8 @@ tbody tr:hover{background:var(--surface-hover)}
       }
       return;
     }
+    var micBtn=e.target.closest('.pb2-mic');
+    if(micBtn){pbToggleDictation(micBtn.getAttribute('data-stage'),micBtn);return;}
     var nsBtn=e.target.closest('.pb2-notesave');
     if(nsBtn){pbSaveStageNote(nsBtn.getAttribute('data-stage'),nsBtn);return;}
     var head=e.target.closest('.pb2-cardhead');
@@ -1296,28 +1310,112 @@ tbody tr:hover{background:var(--surface-hover)}
     s.acts[i].dt=e.target.value||'';
     pbQueueSave();renderPlaybook();
   });
+  // Reflect note edits on the stage's Save button without a re-render (a
+  // render would steal focus from the textarea): enable it when there's
+  // unsynced text, and clear any stale "saved" status. keepStatus leaves the
+  // status line alone (dictation owns it while the mic is live).
+  function pbReflectNoteEdit(wrap,s,keepStatus){
+    if(!wrap) return;
+    var btn=wrap.querySelector('.pb2-notesave'),st=wrap.querySelector('.pb2-notestatus');
+    var t=String(s.note||'').trim();
+    if(btn) btn.disabled=!t||t===s.noteSynced;
+    if(!keepStatus&&st&&t!==s.noteSynced){st.textContent='';st.className='pb2-notestatus';}
+  }
   el('panel-playbook').addEventListener('input',function(e){
     if(!e.target.classList.contains('pb2-note')) return;
     var s=pbStage(e.target.getAttribute('data-stage'));if(!s) return;
     s.note=e.target.value;
-    // Reflect edits on the stage's Save button without a re-render (a render
-    // would steal focus from the textarea): enable it when there's unsynced
-    // text, and clear any stale "saved" status.
-    var wrap=e.target.closest('.pb2-notes');
-    if(wrap){
-      var btn=wrap.querySelector('.pb2-notesave'),st=wrap.querySelector('.pb2-notestatus');
-      var t=e.target.value.trim();
-      if(btn) btn.disabled=!t||t===s.noteSynced;
-      if(st&&t!==s.noteSynced){st.textContent='';st.className='pb2-notestatus';}
-    }
+    pbReflectNoteEdit(e.target.closest('.pb2-notes'),s,false);
     pbQueueSave(); // no re-render — keeps the textarea focused while typing
   });
+
+  /* ---- Voice dictation (Web Speech API) ----
+     The mic button on each stage's Descriptions box toggles speech
+     recognition. Final transcript chunks are appended to the note (state +
+     textarea, no re-render, so the cursor and mic state survive) and queue
+     the normal debounced save; interim words preview in the status line.
+     Only one stage dictates at a time, and any playbook re-render or an
+     explicit Save stops the mic so the DOM it points at is never stale. */
+  var pbSpeech={rec:null,stage:null,btn:null,status:null};
+  function pbSpeechSetStatus(msg,cls){
+    var st=pbSpeech.status;
+    if(st){st.textContent=msg;st.className='pb2-notestatus'+(cls?' pb2-notestatus--'+cls:'');}
+  }
+  function pbStopDictation(){
+    var rec=pbSpeech.rec;
+    if(!rec) return;
+    pbSpeech.rec=null;                       // onend sees this and skips cleanup
+    if(pbSpeech.btn) pbSpeech.btn.classList.remove('pb2-mic--on');
+    var st=pbSpeech.status;
+    if(st&&st.className==='pb2-notestatus'){st.textContent='';}
+    pbSpeech.stage=null;pbSpeech.btn=null;pbSpeech.status=null;
+    try{rec.onresult=rec.onerror=rec.onend=null;rec.stop();}catch(_){}
+  }
+  function pbToggleDictation(stageKey,btn){
+    if(pbSpeech.rec&&pbSpeech.stage===stageKey){pbStopDictation();return;}
+    pbStopDictation();                       // switching stages mid-dictation
+    var wrap=btn.closest('.pb2-notes');
+    var st=wrap&&wrap.querySelector('.pb2-notestatus');
+    function fail(msg){if(st){st.textContent=msg;st.className='pb2-notestatus pb2-notestatus--err';}}
+    var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR){fail('Voice input isn’t supported in this browser — try Chrome or Edge.');return;}
+    var s=pbStage(stageKey); if(!s||!wrap) return;
+    var ta=wrap.querySelector('.pb2-note');
+    var rec=new SR();
+    rec.continuous=true;rec.interimResults=true;rec.lang=navigator.language||'en-US';
+    pbSpeech.rec=rec;pbSpeech.stage=stageKey;pbSpeech.btn=btn;pbSpeech.status=st;
+    btn.classList.add('pb2-mic--on');
+    pbSpeechSetStatus('Listening — speak now…','');
+    rec.onresult=function(ev){
+      var finals='',interim='';
+      for(var i=ev.resultIndex;i<ev.results.length;i++){
+        var t=ev.results[i][0].transcript;
+        if(ev.results[i].isFinal) finals+=t; else interim+=t;
+      }
+      finals=finals.trim();
+      if(finals){
+        var cur=String(s.note||'').replace(/\s+$/,'');
+        s.note=cur?cur+' '+finals:finals;
+        if(ta){ta.value=s.note;ta.scrollTop=ta.scrollHeight;}
+        pbReflectNoteEdit(wrap,s,true);
+        pbQueueSave();
+      }
+      pbSpeechSetStatus(interim.trim()?'“'+interim.trim()+'”':'Listening — speak now…','');
+    };
+    rec.onerror=function(ev){
+      var code=ev&&ev.error,msg;
+      if(code==='not-allowed'||code==='service-not-allowed') msg='Microphone access is blocked — allow it in your browser settings and try again.';
+      else if(code==='no-speech') msg='No speech detected — click the mic and try again.';
+      else if(code==='audio-capture') msg='No microphone found — check your audio settings.';
+      else if(code==='aborted') msg='';
+      else msg='Voice input error'+(code?' — '+code:'')+'. Try again.';
+      pbSpeechSetStatus(msg,msg?'err':'');
+      var r=pbSpeech.rec;pbSpeech.rec=null;
+      if(pbSpeech.btn) pbSpeech.btn.classList.remove('pb2-mic--on');
+      pbSpeech.stage=null;pbSpeech.btn=null;pbSpeech.status=null;
+      if(r){try{r.onresult=r.onerror=r.onend=null;r.stop();}catch(_){}}
+    };
+    rec.onend=function(){
+      if(pbSpeech.rec!==rec) return;         // already stopped explicitly
+      pbSpeech.rec=null;
+      if(pbSpeech.btn) pbSpeech.btn.classList.remove('pb2-mic--on');
+      if(pbSpeech.status&&pbSpeech.status.className==='pb2-notestatus'){pbSpeech.status.textContent='';}
+      pbSpeech.stage=null;pbSpeech.btn=null;pbSpeech.status=null;
+    };
+    try{rec.start();}
+    catch(err){
+      fail('Couldn’t start voice input — try again.');
+      pbSpeech.rec=null;pbSpeech.stage=null;pbSpeech.btn=null;pbSpeech.status=null;
+      btn.classList.remove('pb2-mic--on');
+    }
+  }
 
   // Explicit per-stage note save: persists the whole playbook, then appends
   // this stage's note as a NEW dated row in the Event_Descriptions tab, so it
   // surfaces automatically in the portal's Descriptions list for this event.
   function pbSaveStageNote(stageKey,btn){
     var s=pbStage(stageKey); if(!s||!btn) return;
+    pbStopDictation(); // what's in the box now is what gets saved
     var note=String(s.note||'').trim();
     var st=btn.parentNode.querySelector('.pb2-notestatus');
     function setStatus(msg,cls){if(st){st.textContent=msg;st.className='pb2-notestatus'+(cls?' pb2-notestatus--'+cls:'');}}

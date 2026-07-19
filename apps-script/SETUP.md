@@ -466,11 +466,14 @@ safe. Unrecognized values are ignored rather than applied.
 
 # Playbook stage notes — "Save note" → Event_Descriptions sync
 
-Each stage card on the **Playbook** tab has a *Notes for the team* box with its
-own **Save note** button. Typing still auto-saves the note into the
-`Event_Playbook` tab (debounced, exactly as before) and mirrors it into the
-Events row's `description` cell under the `⸻ Team Notes ⸻` marker. Clicking
-**Save note** additionally publishes the note to the portal:
+Each stage card on the **Playbook** tab has a *Descriptions* box with its
+own **Save note** button and a **microphone button** (top-right corner of the
+text box) for voice-to-text: click it, speak, and the dictated words are
+appended to the note (Web Speech API — Chrome/Edge; other browsers get a
+clear "not supported" message). Typing or dictating still auto-saves the note
+into the `Event_Playbook` tab (debounced, exactly as before) and mirrors it
+into the Events row's `description` cell under the `⸻ Team Notes ⸻` marker.
+Clicking **Save note** additionally publishes the note to the portal:
 
 1. The full playbook state is persisted first (`savePlaybook`), so the sheet
    and the note row can never disagree.
@@ -494,14 +497,16 @@ Events row's `description` cell under the `⸻ Team Notes ⸻` marker. Clicking
 | `event_id` | the Events row's own `event_id` (resolved server-side via the same key join as `openEvent`; falls back to the key for `row-N` events) |
 | `title` | the Events row's own `title` |
 | `description_date` | today, `yyyy-MM-dd`, in the spreadsheet's time zone |
-| `description_text` | HTML: `<p><strong>Playbook — <Stage></strong></p>` + the note (escaped; blank lines become paragraphs, single newlines `<br>`) — matching the rich-text format the portal's other descriptions use |
+| `description_text` | HTML in a fixed shape — **stage title first** (`<p><strong><Stage></strong></p>`), **then the note** (escaped; blank lines become paragraphs, single newlines `<br>`), **then the save date** (`<p><em>July 19, 2026</em></p>`, spreadsheet time zone) — matching the rich-text format the portal's other descriptions use |
 | `created_at` | ISO timestamp |
 
 **Safety:**
 
 - **Duplicate-proof.** If an identical description already exists for the
-  event (double-click, resave of an unchanged note), no row is written and the
-  UI reports *"Already in this event's descriptions"*.
+  event (double-click, resave of an unchanged note the same day), no row is
+  written and the UI reports *"Already in this event's descriptions"*. The
+  save date is part of the text, so resaving the same note on a later day
+  correctly adds a new dated entry.
 - **Empty notes are refused** server-side (`empty_note`), and unknown event
   keys return `not_found`.
 - **Non-destructive.** The action only ever *appends* to `Event_Descriptions`
