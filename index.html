@@ -239,7 +239,7 @@ tbody tr:hover{background:var(--surface-hover)}
   .rmetrics{grid-template-columns:1fr}
 }
 
-/* ---------- Playbook v2 — 6-stage partner playbook ----------
+/* ---------- Playbook v2 — 7-stage partner playbook ----------
    Everything is scoped under #panel-playbook .pb2 with a pb2- class prefix so
    nothing collides with existing styles. Flat colors, 4–6px radii. */
 #panel-playbook .pb2{
@@ -302,15 +302,20 @@ tbody tr:hover{background:var(--surface-hover)}
 #panel-playbook .pb2-owner--both{background:var(--pb-cyan);color:#fff}
 #panel-playbook .pb2-date{font-family:var(--font);font-size:12px;color:var(--text);background:#fff;border:1px solid var(--pb-bord);border-radius:5px;padding:4px 7px}
 /* "this stage is done when" bar */
-#panel-playbook .pb2-gate{display:flex;align-items:center;gap:11px;margin-top:12px;background:rgba(204,136,0,.06);border:1px solid var(--pb-amber);border-radius:6px;padding:11px 13px}
-#panel-playbook .pb2-gatecheck{width:24px;height:24px;border-radius:50%;border:2px solid var(--pb-amber);background:#fff;color:#fff;flex-shrink:0;display:grid;place-items:center;cursor:pointer;padding:0}
-#panel-playbook .pb2-gatecheck svg{width:12px;height:12px;opacity:0}
-#panel-playbook .pb2-gate--on{background:rgba(15,122,63,.07);border-color:var(--pb-green)}
-#panel-playbook .pb2-gate--on .pb2-gatecheck{background:var(--pb-green);border-color:var(--pb-green)}
-#panel-playbook .pb2-gate--on .pb2-gatecheck svg{opacity:1}
+#panel-playbook .pb2-gate{margin-top:12px;background:rgba(204,136,0,.06);border:1px solid var(--pb-amber);border-radius:6px;padding:12px 14px}
 #panel-playbook .pb2-gatetext{font-size:13px;color:var(--text)}
 #panel-playbook .pb2-gatetext b{color:var(--pb-amber)}
+#panel-playbook .pb2-exit{margin:7px 0 11px;padding:0;list-style:none}
+#panel-playbook .pb2-exit li{position:relative;padding-left:20px;margin:4px 0}
+#panel-playbook .pb2-exit li::before{content:"";position:absolute;left:2px;top:4px;width:8px;height:8px;border-radius:50%;border:2px solid var(--pb-amber)}
+#panel-playbook .pb2-gatecheck{display:inline-flex;align-items:center;gap:8px;font-family:var(--font);font-size:12.5px;font-weight:700;color:var(--pb-amber);background:#fff;border:2px solid var(--pb-amber);border-radius:5px;padding:7px 14px;cursor:pointer;transition:opacity .15s}
+#panel-playbook .pb2-gatecheck:hover{opacity:.85}
+#panel-playbook .pb2-gatecheck svg{width:12px;height:12px;display:none;flex-shrink:0}
+#panel-playbook .pb2-gate--on{background:rgba(15,122,63,.07);border-color:var(--pb-green)}
 #panel-playbook .pb2-gate--on .pb2-gatetext b{color:var(--pb-green)}
+#panel-playbook .pb2-gate--on .pb2-exit li::before{border-color:var(--pb-green);background:var(--pb-green)}
+#panel-playbook .pb2-gate--on .pb2-gatecheck{background:var(--pb-green);border-color:var(--pb-green);color:#fff}
+#panel-playbook .pb2-gate--on .pb2-gatecheck svg{display:block}
 /* stage descriptions box */
 #panel-playbook .pb2-notes{margin-top:12px}
 #panel-playbook .pb2-noteslabel{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gray-light);margin-bottom:6px}
@@ -612,7 +617,7 @@ tbody tr:hover{background:var(--surface-hover)}
     roleFilter:'all',
     aiAnalyzed:false,
     eventType:'Conference',
-    // Six-stage playbook state. Built lazily by pbFreshState(state.event.start)
+    // Seven-stage playbook state. Built lazily by pbFreshState(state.event.start)
     // on first render and rebuilt for each opened event (saved Event_Playbook
     // rows are then merged on top — see loadSavedPlaybook).
     playbook:[]
@@ -869,10 +874,12 @@ tbody tr:hover{background:var(--surface-hover)}
     });
   }
 
-  /* ================= PLAYBOOK (v2 — 6-stage partner playbook) =================
-     Six lifecycle stages, each with activity rows (checkbox + owner tag + due
-     date), an amber "this stage is done when" exit bar, and a Descriptions
-     box (typed or dictated via the mic button — see pbToggleDictation).
+  /* ================= PLAYBOOK (v2 — 7-stage partner playbook) =================
+     Seven lifecycle stages (Event → Audience → Messaging → Drive Attendance →
+     Event Day → Follow-Up → Results), each with three activity rows (checkbox +
+     owner tag + due date), an amber exit-criteria block (three criteria + one
+     Confirm Stage Complete button), and a Descriptions box (typed or dictated
+     via the mic button — see pbToggleDictation).
      Due dates default to offsets from the opened event's real start date; every
      change is persisted per event to the Event_Playbook tab (debounced — see
      pbQueueSave) and stage notes are mirrored into the Events row's description
@@ -881,47 +888,72 @@ tbody tr:hover{background:var(--surface-hover)}
 
   // Default activity template. ownerDefault: 'recast' | 'partner' | 'both'.
   // off = default due date as days from event start (negative = before).
+  // done_when = the stage's three exit criteria (rendered in the amber block
+  // above the Confirm Stage Complete button).
   var PB_STAGES_TEMPLATE=[
-    { key:'plan',    name:'Plan & Build', timing:'4–6 wks out',
-      done_when:'Goals, date, speakers and target list are locked.',
+    { key:'setup',    name:'Event', timing:'5–6 wks out',
+      done_when:[
+        'Event details are confirmed',
+        'Roles and responsibilities are agreed',
+        'Commercial goals are documented'],
       acts:[
-        {x:'Agree goals & target list',            o:'both',   off:-28},
-        {x:'Confirm date, speakers & agenda',      o:'both',   off:-27},
-        {x:'Build landing page & registration',    o:'recast', off:-23},
-        {x:'Set up invites & tracking',            o:'recast', off:-22}]},
-    { key:'prepare', name:'Prepare', timing:'3 wks – day before',
-      done_when:'Registrations on track and the dry run has passed.',
+        {x:'Confirm date, format, topic, and speakers',        o:'both',   off:-38},
+        {x:'Align partner and internal owners',                o:'both',   off:-36},
+        {x:'Set meetings, opportunities, and closed won goals',o:'both',   off:-35}]},
+    { key:'audience', name:'Audience', timing:'4–5 wks out',
+      done_when:[
+        'Target list is uploaded',
+        'Buying committee coverage is understood',
+        'Priority accounts and owners are confirmed'],
       acts:[
-        {x:'Send invites & promote the event',     o:'both',   off:-17},
-        {x:'Book pre-set meetings',                o:'recast', off:-10},
-        {x:'Dry run — deck, tech, timing',         o:'both',   off:-7},
-        {x:'Confirm logistics & materials',        o:'recast', off:-2}]},
-    { key:'event',   name:'Event Day', timing:'',   // timing filled from event date
-      done_when:'The event ran and attendance & interest were captured.',
+        {x:'Upload target accounts and contacts',              o:'both',   off:-31},
+        {x:'Identify buying roles and missing stakeholders',   o:'both',   off:-29},
+        {x:'Assign account and contact owners',                o:'both',   off:-28}]},
+    { key:'messaging',name:'Messaging', timing:'3–4 wks out',
+      done_when:[
+        'Customer problem and urgency are clear',
+        'Partner and seller messaging are aligned',
+        'CTA and talk track are approved'],
       acts:[
-        {x:'Deliver the presentation',             o:'both',   off:0},
-        {x:'Run polls & Q&A',                      o:'partner',off:0},
-        {x:'Capture notes & interest signals',     o:'recast', off:0},
-        {x:'Book next meetings live',              o:'both',   off:0}]},
-    { key:'follow',  name:'Follow-Up', timing:'Within 1 week',
-      done_when:'Every contact is followed up and marked.',
+        {x:'Define Why Change and Why Now',                    o:'both',   off:-24},
+        {x:'Define Why Us and supporting proof',               o:'recast', off:-23},
+        {x:'Agree on the CTA and seller talk track',           o:'both',   off:-21}]},
+    { key:'drive',    name:'Drive Attendance', timing:'3 wks – day before',
+      done_when:[
+        'Outreach is active',
+        'Registration progress is reviewed',
+        'Priority accounts have owners'],
       acts:[
-        {x:'Send thank-you + recording',           o:'recast', off:1},
-        {x:'Call & email hot contacts',            o:'recast', off:2},
-        {x:'Partner follows up their accounts',    o:'partner',off:4},
-        {x:'Mark every contact — meeting / not interested / nurture', o:'recast', off:7}]},
-    { key:'pipeline',name:'Pipeline', timing:'1–2 months after',
-      done_when:'Meetings held and opportunities created.',
+        {x:'Launch marketing, SDR, AE, and partner outreach',  o:'both',   off:-18},
+        {x:'Track registrations and priority accounts',        o:'recast', off:-10},
+        {x:'Confirm meeting booking availability',             o:'recast', off:-3}]},
+    { key:'eventday', name:'Event Day', timing:'',   // timing filled from event date
+      done_when:[
+        'Speakers and technology are ready',
+        'Event is delivered',
+        'Engagement is recorded'],
       acts:[
-        {x:'Hold the booked meetings',             o:'recast', off:15},
-        {x:'Create opportunities in CRM',          o:'recast', off:22},
-        {x:'Share pipeline update with partner',   o:'both',   off:29}]},
-    { key:'outcomes',name:'Outcomes', timing:'After',
-      done_when:'Results reviewed and lessons captured for next time.',
+        {x:'Finalize presentation and dry run',                o:'both',   off:-1},
+        {x:'Deliver the event and present the CTA',            o:'both',   off:0},
+        {x:'Capture attendance and engagement',                o:'recast', off:0}]},
+    { key:'followup', name:'Follow-Up', timing:'Within 1 week',
+      done_when:[
+        'Every priority contact has an owner',
+        'Follow-up messaging is agreed',
+        'Meeting outcomes are updated'],
       acts:[
-        {x:'Report results & ROI',                 o:'recast', off:60},
-        {x:'Debrief with partner',                 o:'both',   off:63},
-        {x:'Write down what to improve next event',o:'both',   off:63}]}
+        {x:'Segment attendees and no-shows',                   o:'recast', off:1},
+        {x:'Assign follow-up owners',                          o:'both',   off:2},
+        {x:'Launch outreach and schedule meetings',            o:'both',   off:3}]},
+    { key:'results',  name:'Results', timing:'1–2 months after',
+      done_when:[
+        'Meeting results are documented',
+        'Opportunity counts are confirmed',
+        'Partner review is complete'],
+      acts:[
+        {x:'Confirm meetings booked',                          o:'recast', off:21},
+        {x:'Confirm opportunities created',                    o:'recast', off:30},
+        {x:'Confirm closed won deals',                         o:'both',   off:60}]}
   ];
   function pbFmtISO(d){
     function p2(n){return (n<10?'0':'')+n;}
@@ -931,7 +963,7 @@ tbody tr:hover{background:var(--surface-hover)}
   // leave every due date blank — never guessed (house rule).
   function pbFreshState(startDate){
     return PB_STAGES_TEMPLATE.map(function(s){
-      return {key:s.key,name:s.name,timing:s.timing,done_when:s.done_when,gate:false,note:'',
+      return {key:s.key,name:s.name,timing:s.timing,done_when:s.done_when.slice(),gate:false,note:'',
         acts:s.acts.map(function(a){
           return {x:a.x,o:a.o,dt:startDate?pbFmtISO(addDays(startDate,a.off)):'',d:false};
         })};
@@ -959,9 +991,7 @@ tbody tr:hover{background:var(--surface-hover)}
   // Render-time only: stored activity text stays generic so template edits and
   // saved rows never diverge per partner.
   function pbActText(a){
-    var t=a.x;
-    if(t==='Partner follows up their accounts'&&state.event.partner) t=state.event.partner+' follows up their accounts';
-    return t;
+    return a.x;
   }
   function pbFmtDue(dt){var d=parseSheetDate(dt);return d?fmtShort(d):'';}
   var PB_CHECK='<svg viewBox="0 0 14 14" fill="none"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -977,7 +1007,7 @@ tbody tr:hover{background:var(--surface-hover)}
         +'</button>';
     }).join('');
     return '<div class="pb2-railwrap"><div class="pb2-rail">'+steps+'</div>'
-      +'<div class="pb2-railmeta">'+(cur>=state.playbook.length?'All stages complete':'Stage '+(cur+1)+' of 6')+' · '+g+' complete</div></div>';
+      +'<div class="pb2-railmeta">'+(cur>=state.playbook.length?'All stages complete':'Stage '+(cur+1)+' of '+state.playbook.length)+' · '+g+' complete</div></div>';
   }
   function pbNextStrip(){
     var days='';
@@ -991,7 +1021,7 @@ tbody tr:hover{background:var(--surface-hover)}
     var cur=pbCurrentIdx();
     if(cur>=state.playbook.length){
       return '<div class="pb2-next"><span class="pb2-next__label">All done</span>'
-        +'<div class="pb2-next__main"><b>All 6 stages complete</b> — review Outcomes and capture the lessons.</div>'+daysHtml+'</div>';
+        +'<div class="pb2-next__main"><b>All '+state.playbook.length+' stages complete</b> — review Results and capture the lessons.</div>'+daysHtml+'</div>';
     }
     var s=state.playbook[cur],act=null;
     for(var i=0;i<s.acts.length;i++){ if(!s.acts[i].d){act=s.acts[i];break;} }
@@ -1000,7 +1030,7 @@ tbody tr:hover{background:var(--surface-hover)}
       var due=pbFmtDue(act.dt);
       main='<b>'+esc(pbActText(act))+'</b> · '+esc(pbOwnerLabel(act.o))+(due?' · due '+esc(due):'');
     } else {
-      main='All activities checked — confirm the “done when” bar to finish <b>'+esc(s.name)+'</b>.';
+      main='All activities checked — press Confirm Stage Complete to finish <b>'+esc(s.name)+'</b>.';
     }
     return '<div class="pb2-next"><span class="pb2-next__label">Do this next · '+esc(s.name)+'</span>'
       +'<div class="pb2-next__main">'+main+'</div>'+daysHtml+'</div>';
@@ -1013,7 +1043,7 @@ tbody tr:hover{background:var(--surface-hover)}
       :(i===cur?'<span class="pb2-chip pb2-chip--cur">In progress</span>'
       :'<span class="pb2-chip pb2-chip--next">Up next</span>');
     // Event Day's timing label comes from the event's real date.
-    var timing=s.key==='event'?(fmtRange(state.event.start,state.event.end)||''):s.timing;
+    var timing=s.key==='eventday'?(fmtRange(state.event.start,state.event.end)||''):s.timing;
     var acts=s.acts.map(function(a,j){
       return '<div class="pb2-act'+(a.d?' pb2-act--done':'')+'" data-stage="'+s.key+'" data-idx="'+j+'">'
         +'<button type="button" class="pb2-tick" aria-label="Mark activity done">'+PB_CHECK+'</button>'
@@ -1023,8 +1053,10 @@ tbody tr:hover{background:var(--surface-hover)}
         +'</div>';
     }).join('');
     var gate='<div class="pb2-gate'+(s.gate?' pb2-gate--on':'')+'" data-stage="'+s.key+'">'
-      +'<button type="button" class="pb2-gatecheck" aria-label="Confirm this stage is done">'+PB_CHECK+'</button>'
-      +'<div class="pb2-gatetext"><b>This stage is done when:</b> '+esc(s.done_when)+'</div>'
+      +'<div class="pb2-gatetext"><b>Exit criteria — this stage is done when:</b>'
+      +'<ul class="pb2-exit">'+s.done_when.map(function(c){return '<li>'+esc(c)+'</li>';}).join('')+'</ul>'
+      +'</div>'
+      +'<button type="button" class="pb2-gatecheck" aria-label="Confirm this stage is complete">'+PB_CHECK+'<span>'+(s.gate?'Stage Complete':'Confirm Stage Complete')+'</span></button>'
       +'</div>';
     var noteTrim=String(s.note||'').trim();
     var noteSynced=!!(noteTrim&&s.noteSynced===noteTrim);
@@ -1055,11 +1087,11 @@ tbody tr:hover{background:var(--surface-hover)}
       var c=pbCurrentIdx();
       if(c<state.playbook.length) pbOpen[state.playbook[c].key]=true;
     }
-    var g=pbStagesComplete(),pct=Math.round(g/6*100);
+    var g=pbStagesComplete(),total=state.playbook.length,pct=Math.round(g/total*100);
     var head=''
       +'<div class="pbhead">'
       +'  <span></span>'
-      +'  <div class="pb2-headmeta"><b>'+g+' / 6</b>stages complete</div>'
+      +'  <div class="pb2-headmeta"><b>'+g+' / '+total+'</b>stages complete</div>'
       +'</div>';
     var cards=state.playbook.map(pbCard).join('');
     el('panel-playbook').innerHTML='<div class="pb2">'+head+pbRail()+pbNextStrip()
@@ -2249,7 +2281,7 @@ tbody tr:hover{background:var(--surface-hover)}
     state.fileName=''; state.updated=''; state.aiAnalyzed=false;
     state.search=''; state.filter='all'; state.roleFilter='all';
     savedState={count:0,dirty:false,busy:false};
-    // Playbook: drop any pending save for the previous event, rebuild the six
+    // Playbook: drop any pending save for the previous event, rebuild the seven
     // stages with due dates derived from THIS event's real date, then merge any
     // saved Event_Playbook rows on top (non-blocking, silent on failure).
     clearTimeout(pbSaveTimer);

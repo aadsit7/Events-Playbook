@@ -12,7 +12,7 @@
  *     categorizeLeads / listEvents / openEvent / saveEventContacts /
  *     listEventContacts / savePlaybook / loadPlaybook / saveStageNote
  *
- *     NEW: savePlaybook / loadPlaybook persist each event's 6-stage playbook
+ *     NEW: savePlaybook / loadPlaybook persist each event's 7-stage playbook
  *     (activities, owners, due dates, gates, stage descriptions) to the
  *     Event_Playbook tab. saveStageNote appends one stage's description as a
  *     new dated row in the Event_Descriptions tab — the text starts with the
@@ -1834,8 +1834,9 @@ var EVENT_DESCRIPTION_HEADERS = [
   'description_id', 'event_id', 'title', 'description_date', 'description_text', 'created_at'
 ];
 var PB_STAGE_NAMES = {
-  plan: 'Plan & Build', prepare: 'Prepare', event: 'Event Day',
-  follow: 'Follow-Up', pipeline: 'Pipeline', outcomes: 'Outcomes'
+  setup: 'Event', audience: 'Audience', messaging: 'Messaging',
+  drive: 'Drive Attendance', eventday: 'Event Day',
+  followup: 'Follow-Up', results: 'Results'
 };
 
 function getEventDescriptionsSheet(ss) {
@@ -1951,8 +1952,9 @@ function syncNotesToEventDescription(ss, eventKey, stages) {
     var h = data[0].map(function (x) { return String(x || '').trim().toLowerCase(); });
     var cId = h.indexOf('event_id'), cDesc = h.indexOf('description');
     if (cDesc === -1) return;
-    var names = { plan:'Plan & Build', prepare:'Prepare', event:'Event Day',
-                  follow:'Follow-Up', pipeline:'Pipeline', outcomes:'Outcomes' };
+    var names = { setup:'Event', audience:'Audience', messaging:'Messaging',
+                  drive:'Drive Attendance', eventday:'Event Day',
+                  followup:'Follow-Up', results:'Results' };
     var noteLines = [];
     (stages || []).forEach(function (s) {
       var n = String(s.note || '').trim();

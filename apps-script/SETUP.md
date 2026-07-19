@@ -155,28 +155,29 @@ additive — every original action is unchanged.
 
 ---
 
-# Event Playbook — saving the 6-stage playbook back to the sheet
+# Event Playbook — saving the 7-stage playbook back to the sheet
 
-The Playbook tab is a **6-stage partner playbook** (Plan & Build → Prepare →
-Event Day → Follow-Up → Pipeline → Outcomes). Everything you change on it —
-activity checkboxes, owner tags (Recast / Partner / Both), due dates, each
-stage's "done when" confirmation, and the per-stage **Notes for the team** —
-is persisted **per event**, with a 1.5-second debounce after each change, and
-loaded straight back the next time the event is opened. The demo event never
-writes to the sheet.
+The Playbook tab is a **7-stage partner playbook** (Event → Audience →
+Messaging → Drive Attendance → Event Day → Follow-Up → Results). Each stage
+has three activities, three exit criteria and a **Confirm Stage Complete**
+button. Everything you change on it — activity checkboxes, owner tags
+(Recast / Partner / Both), due dates, each stage's completion confirmation,
+and the per-stage **Descriptions** notes — is persisted **per event**, with a
+1.5-second debounce after each change, and loaded straight back the next time
+the event is opened. The demo event never writes to the sheet.
 
 ### Where the playbook is stored
 
 A new tab, **`Event_Playbook`**, is **created automatically on first save** —
 same pattern as `Event_Contacts`. It holds, per event: **one row per activity**,
-plus **one `gate` row** (the stage's "done when" confirmation) and **one `note`
-row** per stage. Its columns:
+plus **one `gate` row** (the stage's Confirm Stage Complete flag) and **one
+`note` row** per stage. Its columns:
 
 | Column | Meaning |
 | --- | --- |
 | `event_id` | **Join key** — the same `event_id` / `row-N` key the picker, `openEvent` and `Event_Contacts` use. |
 | `event_title` | The event's title, for human readability. |
-| `stage_key` | `plan` · `prepare` · `event` · `follow` · `pipeline` · `outcomes`. |
+| `stage_key` | `setup` · `audience` · `messaging` · `drive` · `eventday` · `followup` · `results`. |
 | `row_type` | `activity` · `gate` · `note`. |
 | `act_index` | Position of the activity within its stage (activity rows only). |
 | `text` · `owner` · `due_date` · `done` | The activity's label, owner (`recast`/`partner`/`both`), due date (`yyyy-MM-dd`) and TRUE/FALSE done flag. `done` also carries the gate row's confirmed flag. |
@@ -208,8 +209,8 @@ below a `⸻ Team Notes ⸻` marker:
 <original description, preserved verbatim>
 
 ⸻ Team Notes ⸻
-[Plan & Build] Kickoff call booked.
-[Prepare] Dry run moved to Thursday.
+[Event] Kickoff call booked.
+[Drive Attendance] Registration push moved to Thursday.
 ```
 
 Everything **at/after the marker is replaced** on each save; the original
@@ -486,7 +487,7 @@ Clicking **Save note** additionally publishes the note to the portal:
 
 ```json
 { "action": "saveStageNote", "eventKey": "evt_…", "eventTitle": "…",
-  "stageKey": "plan", "stageName": "Plan & Build", "note": "…" }
+  "stageKey": "setup", "stageName": "Event", "note": "…" }
 ```
 
 **Row written** (columns matched by header name, like every other writer):
