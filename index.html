@@ -425,13 +425,13 @@ tbody tr:hover{background:var(--surface-hover)}
   <!-- ===== Tabs ===== -->
   <div class="tabs">
     <button class="tab tab--active" data-tab="overview">Overview</button>
-    <button class="tab" data-tab="contacts">Contacts <span class="pill" id="tab-contacts-count">0</span></button>
     <button class="tab" data-tab="playbook">Playbook <span class="pill" id="tab-playbook-count">0%</span></button>
+    <button class="tab" data-tab="contacts">Contacts <span class="pill" id="tab-contacts-count">0</span></button>
   </div>
 
   <div class="panel panel--active" id="panel-overview"></div>
-  <div class="panel" id="panel-contacts"></div>
   <div class="panel" id="panel-playbook"></div>
+  <div class="panel" id="panel-contacts"></div>
 
 </div>
 
@@ -792,14 +792,16 @@ tbody tr:hover{background:var(--surface-hover)}
     });
     return '<div class="ctoolbar rolebar"><span class="rolebar__lbl">Buyer role</span><div class="chips">'+chipsHtml+'</div></div>';
   }
-  // AI button — reflects busy/progress state so it stays consistent across re-renders.
+  // AI button — reflects busy/progress state so it stays consistent across
+  // re-renders. Hidden once the list has been analyzed (no re-run offered).
   function aiButtonHTML(){
     if(aiBusy){
       var t=aiTotal?('Analyzing '+aiProgress+'/'+aiTotal+'…'):'Analyzing…';
       return '<button class="btn btn--ai js-ai" disabled><span class="spin"></span>'+t+'</button>';
     }
+    if(state.aiAnalyzed) return '';
     return '<button class="btn btn--ai js-ai" title="Classify each contact’s buyer role &amp; seniority with the SaaS demand-gen AI">'
-      +sparkSVG()+(state.aiAnalyzed?'Re-run AI':'Analyze with AI')+'</button>';
+      +sparkSVG()+'Analyze with AI</button>';
   }
   function sparkSVG(){return '<svg viewBox="0 0 20 20" fill="none"><path d="M10 2.2l1.5 4.3 4.3 1.5-4.3 1.5L10 13.8 8.5 9.5 4.2 8l4.3-1.5L10 2.2z" fill="currentColor"/><path d="M15.6 12.4l.55 1.6 1.6.55-1.6.55-.55 1.6-.55-1.6-1.6-.55 1.6-.55.55-1.6z" fill="currentColor"/></svg>';}
   var SAVE_SVG='<svg viewBox="0 0 20 20" fill="none"><path d="M4.5 3.5h8L16.5 7.5v9a1 1 0 01-1 1h-11a1 1 0 01-1-1v-12a1 1 0 011-1z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6.5 3.5v4h6v-4M6.5 17.5v-5h7v5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
@@ -1516,7 +1518,7 @@ tbody tr:hover{background:var(--surface-hover)}
       if(rows && rows.length){
         state.contacts=mapRows(rows);
         state.fileName=file.name; state.updated='just now';
-        state.search='';state.filter='all';
+        state.search='';state.filter='all';state.roleFilter='all';state.aiAnalyzed=false;
         // A new upload replaces whatever was saved for this event; mark it
         // unsaved so the Save button stands out until it's persisted (the
         // auto-save after AI analysis clears this on success).
@@ -1681,8 +1683,9 @@ tbody tr:hover{background:var(--surface-hover)}
   }
 
   /* ================= AI lead categorization =================
-     Runs automatically after every file upload (the ✨ button re-runs it on
-     demand). Sends the current contacts to the web script in small batches. Each
+     Runs automatically after every file upload (the ✨ button starts it on
+     demand for a list that hasn't been analyzed yet — once analyzed, the
+     button is hidden). Sends the current contacts to the web script in small batches. Each
      contact is classified by the "Event Lead Categorizer" persona into an ICP
      buyer role (Decision Maker / Champion / Influencer / Unknown), a seniority
      tier, and a cleaned company name. Results are applied back onto the same
