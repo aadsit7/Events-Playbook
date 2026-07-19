@@ -48,7 +48,7 @@ nothing is inferred or invented:
 | `title` | workspace header title |
 | `event_type` | type badge + the Playbook event-type selector (non-preset types like *Roundtable* / *Campaign* are added verbatim) |
 | `status` | status badge (color-coded: upcoming/in-progress, cancelled) |
-| `event_date` / `end_date` | header date range, the Playbook's event anchor, and every lead-up (−28/−14/−7/−1 days) and follow-up (+1/+7/+30–90 days) timeline date |
+| `event_date` / `end_date` | header date range, the Playbook's event anchor and days-to-event countdown, and the Event Day stage's timing label |
 | `location` | header location + event anchor |
 | `description` | short summary line under the header |
 | `event_password` | gate only — never displayed, never sent to the browser |
@@ -159,19 +159,23 @@ additive — every original action is unchanged.
 
 The Playbook tab is a **7-stage partner playbook** (Event → Audience →
 Messaging → Drive Attendance → Event Day → Follow-Up → Results). Each stage
-has three activities, three exit criteria and a **Confirm Stage Complete**
-button. Everything you change on it — activity checkboxes, owner tags
-(Recast / Partner / Both), due dates, each stage's completion confirmation,
-and the per-stage **Descriptions** notes — is persisted **per event**, with a
-1.5-second debounce after each change, and loaded straight back the next time
-the event is opened. The demo event never writes to the sheet.
+has three activities. **Stage completion is fully automatic** — a stage is
+complete the moment all three of its activities are checked; there is no
+exit-criteria block or Confirm Stage Complete button. Checked activities
+carry a **completion-date stamp** (the date of the description note that
+evidenced them — see the *AI auto-check* section below — or the day they
+were checked by hand); unchecked activities show no date and there is no
+due-date picker. Everything you change — activity checkboxes, owner tags
+(Recast / Partner / Both), and the per-stage **Descriptions** notes — is
+persisted **per event**, with a 1.5-second debounce after each change, and
+loaded straight back the next time the event is opened. The demo event never
+writes to the sheet.
 
 ### Where the playbook is stored
 
 A new tab, **`Event_Playbook`**, is **created automatically on first save** —
 same pattern as `Event_Contacts`. It holds, per event: **one row per activity**,
-plus **one `gate` row** (the stage's Confirm Stage Complete flag) and **one
-`note` row** per stage. Its columns:
+plus **one `gate` row** and **one `note` row** per stage. Its columns:
 
 | Column | Meaning |
 | --- | --- |
@@ -180,7 +184,7 @@ plus **one `gate` row** (the stage's Confirm Stage Complete flag) and **one
 | `stage_key` | `setup` · `audience` · `messaging` · `drive` · `eventday` · `followup` · `results`. |
 | `row_type` | `activity` · `gate` · `note`. |
 | `act_index` | Position of the activity within its stage (activity rows only). |
-| `text` · `owner` · `due_date` · `done` | The activity's label, owner (`recast`/`partner`/`both`), due date (`yyyy-MM-dd`) and TRUE/FALSE done flag. `done` also carries the gate row's confirmed flag. |
+| `text` · `owner` · `due_date` · `done` | The activity's label, owner (`recast`/`partner`/`both`), **completion date** (`yyyy-MM-dd`, set when the activity is checked) and TRUE/FALSE done flag. The `gate` row's `done` flag is now **derived** (TRUE when all of the stage's activities are checked) — it is still written so the tab keeps its shape, but the page ignores it on load. |
 | `note_text` | The stage's team note (note rows only). |
 | `saved_at` | Timestamp of the save. |
 
@@ -189,15 +193,60 @@ every existing `Event_Playbook` row for the event is removed and the current
 state written in its place, so re-saves never accumulate duplicates and rows
 for other events are never touched.
 
-### The two new actions
+### The playbook actions
 
 - **`savePlaybook`** — `{ eventKey, eventTitle, stages:[{ key, gate, note,
-  acts:[{x,o,dt,d}] }] }` → replaces that event's rows. Returns
+  acts:[{x,o,dt,d}] }] }` → replaces that event's rows (`gate` is the derived
+  all-activities-checked flag; `dt` is the completion date). Returns
   `{ ok, saved }`.
 - **`loadPlaybook`** — `{ eventKey }` → returns
   `{ ok, stages:{ <stage_key>:{ gate, note, acts:[{i,x,o,dt,d}] } } }` (an
   empty `stages` object when nothing is saved — the page falls back to the
-  template defaults, with due dates derived from the event's date).
+  template defaults, all unchecked).
+- **`analyzePlaybookNotes`** — the AI auto-check, documented in its own
+  section below.
+
+### AI auto-check — saved notes automatically check off activities
+
+Whenever an event is opened (and again right after a stage note is saved),
+the page calls **`analyzePlaybookNotes`** with the event key and the current
+activity list:
+
+```json
+{ "action": "analyzePlaybookNotes", "eventKey": "evt_…",
+  "stages": [{ "key": "setup", "name": "Event",
+               "acts": [{ "i": 0, "x": "Confirm date, format, topic, and speakers", "d": false }, …] }, …] }
+```
+
+Server-side, the action gathers **every saved description note** for the
+event — the Events row's own `description` cell (including the
+`⸻ Team Notes ⸻` mirror) plus every dated `Event_Descriptions` row (the rows
+**Save note** appends, and any the portal added, flattened from HTML to plain
+text) — and asks Claude (`claude-sonnet-5`) which activities those notes show
+as **already completed**. It returns:
+
+```json
+{ "ok": true, "checks": [{ "stage": "setup", "i": 0, "date": "2026-06-29" }], "notes": 3 }
+```
+
+The page then checks those boxes, stamps each with the returned date (the
+evidencing note's date, or today when unknown), and persists through the
+normal `savePlaybook` flow. Accuracy rules, enforced in the prompt **and**
+validated after parsing:
+
+- An activity is marked **only when a note clearly states it actually
+  happened** — planning, scheduling, or assigning an owner is not completion;
+  when in doubt the model must leave it unchecked.
+- The analysis **only ever checks boxes** — it never unchecks anything, and
+  activities that are already checked (`"d": true`) are excluded from the
+  question entirely, so nothing the user did is ever overridden.
+- Every returned `{stage, i}` pair is validated against the stages the client
+  sent; unknown keys/indexes are dropped, and malformed dates are blanked.
+- **No notes → no AI call**: an event with no saved descriptions returns
+  `checks: []` immediately.
+- Read-only and best-effort: the action writes nothing, the demo event never
+  triggers it, and a failure leaves the playbook exactly as loaded (checking
+  stays manual until the next analysis).
 
 ### Notes → event description sync
 
@@ -220,12 +269,13 @@ break a playbook save. On open, the description is treated as a rendered
 mirror only: the marker section is **never** read back into stage notes
 (those hydrate solely from `Event_Playbook` rows).
 
-> ⚠️ **Redeploy required:** like the other actions, `savePlaybook` and
-> `loadPlaybook` only work once you update the Apps Script project with this
-> repo's `Code.gs` and publish a **new version** of the existing web-app
-> deployment (Section 2 below). Until then the playbook still renders and
-> works locally, but saves will report *"Unknown action"* and nothing
-> persists.
+> ⚠️ **Redeploy required:** like the other actions, `savePlaybook`,
+> `loadPlaybook` and `analyzePlaybookNotes` only work once you update the
+> Apps Script project with this repo's `Code.gs` and publish a **new
+> version** of the existing web-app deployment (Section 2 below). Until then
+> the playbook still renders and works locally, but saves will report
+> *"Unknown action"*, nothing persists, and the notes analysis silently
+> skips (checking stays manual).
 
 ---
 
@@ -478,10 +528,13 @@ Clicking **Save note** additionally publishes the note to the portal:
 
 1. The full playbook state is persisted first (`savePlaybook`), so the sheet
    and the note row can never disagree.
-2. The new **`saveStageNote`** action appends **one new row to the
+2. The **`saveStageNote`** action appends **one new row to the
    `Event_Descriptions` tab** — the same tab that powers the dated
    *Descriptions* list in the portal's Edit Event modal — so the note surfaces
    there automatically.
+3. The **AI auto-check re-runs** (`analyzePlaybookNotes`, see the Playbook
+   section above): if the note you just saved describes completed work, the
+   matching activities are checked off — with the note's date — right away.
 
 **Request:**
 
