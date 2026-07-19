@@ -461,3 +461,56 @@ safe. Unrecognized values are ignored rather than applied.
 - **Auto-run only on real uploads.** The demo data shown on first page load is
   never sent to the AI; only files the user uploads trigger the automatic
   analysis.
+
+---
+
+# Playbook stage notes — "Save note" → Event_Descriptions sync
+
+Each stage card on the **Playbook** tab has a *Notes for the team* box with its
+own **Save note** button. Typing still auto-saves the note into the
+`Event_Playbook` tab (debounced, exactly as before) and mirrors it into the
+Events row's `description` cell under the `⸻ Team Notes ⸻` marker. Clicking
+**Save note** additionally publishes the note to the portal:
+
+1. The full playbook state is persisted first (`savePlaybook`), so the sheet
+   and the note row can never disagree.
+2. The new **`saveStageNote`** action appends **one new row to the
+   `Event_Descriptions` tab** — the same tab that powers the dated
+   *Descriptions* list in the portal's Edit Event modal — so the note surfaces
+   there automatically.
+
+**Request:**
+
+```json
+{ "action": "saveStageNote", "eventKey": "evt_…", "eventTitle": "…",
+  "stageKey": "plan", "stageName": "Plan & Build", "note": "…" }
+```
+
+**Row written** (columns matched by header name, like every other writer):
+
+| Column | Value |
+| --- | --- |
+| `description_id` | generated `dsc_…` id |
+| `event_id` | the Events row's own `event_id` (resolved server-side via the same key join as `openEvent`; falls back to the key for `row-N` events) |
+| `title` | the Events row's own `title` |
+| `description_date` | today, `yyyy-MM-dd`, in the spreadsheet's time zone |
+| `description_text` | HTML: `<p><strong>Playbook — <Stage></strong></p>` + the note (escaped; blank lines become paragraphs, single newlines `<br>`) — matching the rich-text format the portal's other descriptions use |
+| `created_at` | ISO timestamp |
+
+**Safety:**
+
+- **Duplicate-proof.** If an identical description already exists for the
+  event (double-click, resave of an unchanged note), no row is written and the
+  UI reports *"Already in this event's descriptions"*.
+- **Empty notes are refused** server-side (`empty_note`), and unknown event
+  keys return `not_found`.
+- **Non-destructive.** The action only ever *appends* to `Event_Descriptions`
+  (creating the tab with the exact portal headers if it were missing). No
+  existing row, tab, or action is modified.
+- **Demo event never writes.** The Save button tells you notes aren't synced
+  when the demo event (or an unconfigured backend) is active.
+
+> ⚠️ **Redeploy required:** like every new action, `saveStageNote` only works
+> after updating the Apps Script project with this repo's `Code.gs` and
+> publishing a **new version** of the web-app deployment. Until then the
+> button reports *"Unknown action: saveStageNote"*.
