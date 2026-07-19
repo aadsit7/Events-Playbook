@@ -221,10 +221,6 @@ tbody tr:hover{background:var(--surface-hover)}
 
 /* ---------- Playbook ---------- */
 .pbhead{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:16px}
-.typebar{display:flex;flex-wrap:wrap;gap:8px}
-.typebtn{font-size:13px;font-weight:600;padding:9px 15px;border-radius:var(--r-full);background:#fff;border:1px solid var(--border);color:var(--text);cursor:pointer;transition:all .12s}
-.typebtn:hover{border-color:var(--blue);color:var(--blue)}
-.typebtn--active{background:var(--primary);border-color:var(--primary);color:#fff}
 
 /* results anchor (kept from v1 — rendered at the bottom of the new panel) */
 .anchor{border-radius:var(--radius-card);padding:24px;box-shadow:none;margin-bottom:10px}
@@ -397,9 +393,9 @@ tbody tr:hover{background:var(--surface-hover)}
 }
 
 /* Keyboard focus — accent ring instead of the browser default */
-.btn:focus-visible,.chip:focus-visible,.typebtn:focus-visible,.statusbtn:focus-visible,
+.btn:focus-visible,.chip:focus-visible,.statusbtn:focus-visible,
 .tab:focus-visible,.gate__link:focus-visible,.gate__match:focus-visible{outline:none;box-shadow:var(--ring)}
-.btn:focus,.chip:focus,.typebtn:focus,.statusbtn:focus,.tab:focus,.gate__link:focus,.gate__match:focus{outline:none}
+.btn:focus,.chip:focus,.statusbtn:focus,.tab:focus,.gate__link:focus,.gate__match:focus{outline:none}
 </style>
 </head>
 <body>
@@ -1073,15 +1069,10 @@ tbody tr:hover{background:var(--surface-hover)}
       var c=pbCurrentIdx();
       if(c<state.playbook.length) pbOpen[state.playbook[c].key]=true;
     }
-    var types=['Direct Event','Partner Event','Conference','Webinar','User Group'];
-    // A synced event may use a type outside the presets (e.g. Roundtable,
-    // Campaign) — surface it verbatim rather than forcing a wrong preset.
-    if(state.eventType && types.indexOf(state.eventType)<0) types.unshift(state.eventType);
-    var typebar=types.map(function(t){return '<button class="typebtn'+(t===state.eventType?' typebtn--active':'')+'" data-type="'+esc(t)+'">'+esc(t)+'</button>';}).join('');
     var g=pbStagesComplete(),pct=Math.round(g/6*100);
     var head=''
       +'<div class="pbhead">'
-      +'  <div><div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gray-light);margin-bottom:8px">Event type</div><div class="typebar">'+typebar+'</div></div>'
+      +'  <span></span>'
       +'  <div class="pb2-headmeta"><b>'+g+' / 6</b>stages complete</div>'
       +'</div>';
     var cards=state.playbook.map(pbCard).join('');
@@ -1279,12 +1270,14 @@ tbody tr:hover{background:var(--surface-hover)}
 
   // Playbook v2 (delegated): rail jump, card toggle, activity tick, owner
   // cycle, gate confirm, date change, note edit. Every mutation queues a
-  // debounced save (pbQueueSave).
+  // debounced save (pbQueueSave). Cards behave as an accordion — selecting a
+  // stage (rail or card header) shows that section and collapses the others,
+  // so it's easy to move back and forth between stages.
   el('panel-playbook').addEventListener('click',function(e){
     var step=e.target.closest('.pb2-step');
     if(step){
       var sk=step.getAttribute('data-stage');
-      pbOpen[sk]=true;renderPlaybook();
+      pbOpen={};pbOpen[sk]=true;renderPlaybook();
       var card=document.getElementById('pb2-card-'+sk);
       if(card) card.scrollIntoView({behavior:'smooth',block:'nearest'});
       return;
@@ -1311,8 +1304,8 @@ tbody tr:hover{background:var(--surface-hover)}
       gs.gate=!gs.gate;
       var nextKey=null;
       if(gs.gate){
-        // Completed: collapse this card, advance the rail, open the next stage.
-        pbOpen[gs.key]=false;
+        // Completed: collapse everything, advance the rail, open the next stage.
+        pbOpen={};
         var cur=pbCurrentIdx();
         if(cur<state.playbook.length){nextKey=state.playbook[cur].key;pbOpen[nextKey]=true;}
       }
@@ -1326,10 +1319,10 @@ tbody tr:hover{background:var(--surface-hover)}
     var head=e.target.closest('.pb2-cardhead');
     if(head){
       var hk=head.getAttribute('data-stage');
-      pbOpen[hk]=!pbOpen[hk];renderPlaybook();return;
+      var wasOpen=!!pbOpen[hk];
+      pbOpen={};if(!wasOpen) pbOpen[hk]=true;
+      renderPlaybook();return;
     }
-    var tb=e.target.closest('.typebtn');
-    if(tb){state.eventType=tb.getAttribute('data-type');renderPlaybook();}
   });
   el('panel-playbook').addEventListener('change',function(e){
     if(!e.target.classList.contains('pb2-date')) return;
