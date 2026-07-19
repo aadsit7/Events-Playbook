@@ -449,10 +449,12 @@ tbody tr:hover{background:var(--surface-hover)}
 <!-- ===== Event gate (synced from the Events tab) =====
      Mandatory on open, password-first: the user types the event password and we
      resolve it to the event(s) it unlocks. One match opens straight away; when
-     several events share a password the user picks the right one. A "Browse all
-     events" fallback still lists every open event (the way password-less events
-     are reached). Only then does the workspace open — showing only that event.
-     Completed events are filtered out by the backend and never appear. -->
+     several events share a password the user picks the right one. The event
+     list itself is NEVER shown before the first unlock — the "Browse all
+     events" fallback only appears once an event has been opened (e.g. when
+     switching via "Change event"). Only then does the workspace open — showing
+     only that event. Completed events are filtered out by the backend and
+     never appear. -->
 <div class="modal-backdrop" id="event-modal" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-label="Select your event">
     <div class="modal__head">
@@ -1827,9 +1829,14 @@ tbody tr:hover{background:var(--surface-hover)}
      SERVER-SIDE and releases the full row, prepopulating the workspace exactly
      as the sheet has it — title, type, status, dates, location and description
      copied 1:1, playbook timeline recomputed from the event's real dates.
-     Password-less events (and anyone without a password) reach their event
-     through the "Browse all events" dropdown fallback, which keeps the original
-     select-then-open behaviour. The workspace stays hidden until that first
+     If the deployed backend predates `findEventsByPassword` (its doPost answers
+     "Unknown action"), the gate falls back to resolving the password through
+     `openEvent` itself — tried against each password-protected event — so the
+     password-first flow works on every deployment; the check still runs
+     server-side either way. The event list is never shown before the first
+     unlock: the "Browse all events" dropdown fallback (how password-less
+     events are reached) only appears after an event has been opened, e.g. when
+     switching via "Change event". The workspace stays hidden until that first
      unlock, so the page only ever shows the selected event's details. Passwords
      never travel back to the browser. If the backend is unreachable the gate
      offers a retry. */
@@ -1920,7 +1927,9 @@ tbody tr:hover{background:var(--surface-hover)}
       +'<br><br><button class="btn js-modal-retry">Try again</button></div>';
   }
   // PASSWORD-FIRST gate: a single line for the event password. Submitting it
-  // resolves to the event(s) that password unlocks (see findByPassword).
+  // resolves to the event(s) that password unlocks (see findByPassword). The
+  // "Browse all events" link is only offered AFTER the first unlock — before
+  // that the event list must stay hidden, so the password is the only way in.
   function renderPwGate(){
     matchedEvents=[]; gatePassword='';
     modalBody(
@@ -1930,7 +1939,7 @@ tbody tr:hover{background:var(--surface-hover)}
       +'<div class="gate__meta">We’ll open the event this password unlocks. If it unlocks more than one, you’ll pick from a list.</div></div>'
       +'<div class="gate__err" id="gate-err" hidden></div>'
       +'<div class="gate__actions"><button type="button" class="btn btn--primary js-gate-find">Open event</button></div>'
-      +'<button type="button" class="gate__link js-gate-browse">Browse all events instead</button>'
+      +(unlocked?'<button type="button" class="gate__link js-gate-browse">Browse all events instead</button>':'')
       +'</div>'
     );
     var p=el('gate-pw'); if(p) p.focus();
@@ -1958,7 +1967,10 @@ tbody tr:hover{background:var(--surface-hover)}
   }
   // Fallback picker: the original select-then-open flow. This is how password-
   // less events (and anyone who would rather browse) reach their event.
+  // Only available AFTER the first unlock — the event list is never shown to
+  // someone who hasn't opened an event yet.
   function renderBrowseGate(){
+    if(!unlocked){renderPwGate();return;}
     matchedEvents=[]; gatePassword='';
     if(!sheetEvents.length){modalBody(noEventsHTML());return;}
     var groups={live:[],upcoming:[],past:[],cancelled:[]};
@@ -2017,6 +2029,17 @@ tbody tr:hover{background:var(--surface-hover)}
     var btn=document.querySelector('.js-gate-find');
     if(btn){btn.disabled=false;btn.innerHTML='Open event';}
   }
+  // Close the gate and show the workspace for a fully-loaded event. Shared by
+  // openEventByKey and the findByPasswordFallback single-match path.
+  function unlockWorkspace(full){
+    hideEventModal();
+    applyEvent(full);
+    if(!unlocked){
+      unlocked=true;
+      el('workspace').hidden=false;
+      el('event-modal-cancel').hidden=false;
+    }
+  }
   // Shared open: hand a key + password to `openEvent`, which re-verifies the
   // password SERVER-SIDE and releases the full row. onFail(msg,code) restores
   // whichever gate view is showing. Used by all three entry points below.
@@ -2027,13 +2050,7 @@ tbody tr:hover{background:var(--surface-hover)}
       if(res&&res.ok&&res.event){
         var full=normalizeEvent(res.event);
         if(!full){onFail('The event could not be loaded — try again.');return;}
-        hideEventModal();
-        applyEvent(full);
-        if(!unlocked){
-          unlocked=true;
-          el('workspace').hidden=false;
-          el('event-modal-cancel').hidden=false;
-        }
+        unlockWorkspace(full);
         return;
       }
       // The event is stale (row removed or since completed) — back to the gate.
@@ -2062,7 +2079,7 @@ tbody tr:hover{background:var(--surface-hover)}
         matchedEvents=res.events.map(normalizePickerEvent).filter(Boolean);
         if(!matchedEvents.length){
           gateBusy=false; gatePassword=''; restoreFindBtn();
-          gateError('No event matches that password. Check it and try again, or browse all events.');
+          gateError('No event matches that password. Check it and try again.');
           if(p){p.focus();p.select();}
           return;
         }
@@ -2080,11 +2097,68 @@ tbody tr:hover{background:var(--surface-hover)}
         renderMatches();
         return;
       }
+      // The deployed backend predates `findEventsByPassword` (its doPost
+      // answers "Unknown action: …"). Resolve the password with the actions
+      // that ARE deployed instead of failing the gate.
+      if(res&&/unknown action/i.test(String(res.error||''))){
+        findByPasswordFallback(pw);
+        return;
+      }
       gateBusy=false; gatePassword=''; restoreFindBtn();
       gateError((res&&res.error)||'Could not check that password — try again.');
     }).catch(function(){
       gateBusy=false; gatePassword=''; restoreFindBtn();
       gateError('Could not reach the Google Sheet — check your connection and try again.');
+    });
+  }
+  // Fallback password resolution for deployments without `findEventsByPassword`:
+  // try `openEvent` (which verifies the password SERVER-SIDE and only releases
+  // the row on a match) against every password-protected event from listEvents.
+  // The events that unlock are the matches — same outcome as the primary path:
+  // one match opens straight away, several are listed for the user to pick.
+  // Passwords still never travel back to the browser.
+  function findByPasswordFallback(pw){
+    var locked=sheetEvents.filter(function(e){return e.hasPassword;});
+    if(!locked.length){
+      gateBusy=false; gatePassword=''; restoreFindBtn();
+      gateError('No event matches that password. Check it and try again.');
+      var pi=el('gate-pw'); if(pi){pi.focus();pi.select();}
+      return;
+    }
+    var fulls=[], failed=0, pending=locked.length;
+    function finish(){
+      var matches=fulls.filter(Boolean);
+      if(!matches.length){
+        gateBusy=false; gatePassword=''; restoreFindBtn();
+        gateError(failed
+          ?'Could not reach the Google Sheet — check your connection and try again.'
+          :'No event matches that password. Check it and try again.');
+        var pi=el('gate-pw'); if(pi){pi.focus();pi.select();}
+        return;
+      }
+      if(matches.length===1){
+        // Exactly one event — we already hold its full row; open it now.
+        var btn=document.querySelector('.js-gate-find');
+        if(btn) btn.innerHTML='<span class="spin"></span>Opening…';
+        gateBusy=false;
+        unlockWorkspace(matches[0]);
+        return;
+      }
+      // Several events share this password — let the user choose. A pick goes
+      // through openEventByKey with the kept gatePassword, same as the primary
+      // path (openEvent is deployed — it's what produced these matches).
+      gateBusy=false;
+      matchedEvents=matches;
+      renderMatches();
+    }
+    locked.forEach(function(cand,i){
+      aiFetch({action:'openEvent',eventKey:cand.key,password:pw}).then(function(res){
+        if(res&&res.ok&&res.event) fulls[i]=normalizeEvent(res.event);
+      }).catch(function(){
+        failed++;
+      }).then(function(){
+        if(--pending===0) finish();
+      });
     });
   }
   // A click on one of the events a shared password unlocked.
