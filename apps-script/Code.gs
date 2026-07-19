@@ -92,6 +92,14 @@ function doPost(e) {
       return doListEventContacts(payload);
     }
 
+    // NEW — playbook stage state, keyed by event like Event_Contacts.
+    if (payload.action === 'savePlaybook') {
+      return doSavePlaybook(payload);
+    }
+    if (payload.action === 'loadPlaybook') {
+      return doLoadPlaybook(payload);
+    }
+
     if (payload.action === 'getConfig') {
       return doGetConfig();
     }
@@ -981,4 +989,174 @@ function updateEventLeadCount(ss, eventKey, count) {
       return;
     }
   }
+}
+
+// ============================================================
+// NEW (Playbook v2) — Event_Playbook tab: one row per activity
+// per event, plus one 'gate' row and one 'note' row per stage.
+// Same replace-by-event pattern as Event_Contacts. No existing
+// tab, row, action, or behavior is modified.
+// ============================================================
+var EVENT_PLAYBOOK_TAB = 'Event_Playbook';
+var EVENT_PLAYBOOK_HEADERS = [
+  'event_id','event_title','stage_key','row_type', // row_type: activity | gate | note
+  'act_index','text','owner','due_date','done','note_text','saved_at'
+];
+function getEventPlaybookSheet(ss) {
+  var sheet = ss.getSheetByName(EVENT_PLAYBOOK_TAB);
+  if (!sheet) {
+    sheet = ss.insertSheet(EVENT_PLAYBOOK_TAB);
+    sheet.getRange(1, 1, 1, EVENT_PLAYBOOK_HEADERS.length).setValues([EVENT_PLAYBOOK_HEADERS]);
+    return sheet;
+  }
+  var lastCol = Math.max(1, sheet.getLastColumn());
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h || '').trim(); });
+  var missing = EVENT_PLAYBOOK_HEADERS.filter(function (h) { return headers.indexOf(h) === -1; });
+  if (missing.length) sheet.getRange(1, headers.length + 1, 1, missing.length).setValues([missing]);
+  return sheet;
+}
+/**
+ * doSavePlaybook
+ * Input: { action:'savePlaybook', eventKey, eventTitle,
+ *          stages:[{ key, gate, note, acts:[{x,o,dt,d}] }] }
+ * Replace-by-event, then best-effort sync of stage notes into the
+ * Events row 'description' cell (see syncNotesToEventDescription).
+ * Output: { ok:true, saved:<rowCount> }
+ */
+function doSavePlaybook(payload) {
+  var key = String(payload.eventKey == null ? '' : payload.eventKey).trim();
+  if (!key) return jsonOut({ ok: false, code: 'bad_request', error: 'No event specified' });
+  var stages = (payload.stages && payload.stages.length) ? payload.stages : [];
+  if (stages.length > 20) stages = stages.slice(0, 20); // safety cap
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = getEventPlaybookSheet(ss);
+  var lastCol = sheet.getLastColumn();
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h || '').trim(); });
+  var idCol = headers.indexOf('event_id');
+  // Remove this event's existing rows (bottom-up).
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1 && idCol !== -1) {
+    var ids = sheet.getRange(2, idCol + 1, lastRow - 1, 1).getValues();
+    for (var r = ids.length - 1; r >= 0; r--) {
+      if (String(ids[r][0]).trim() === key) sheet.deleteRow(r + 2);
+    }
+  }
+  // Build fresh rows.
+  var stamp = new Date();
+  var rows = [];
+  stages.forEach(function (s) {
+    var sk = String(s.key || '');
+    (s.acts || []).slice(0, 30).forEach(function (a2, j) {
+      rows.push(pbRowFor(headers, key, payload.eventTitle, sk, 'activity', j,
+        a2.x, a2.o, a2.dt, a2.d ? 'TRUE' : 'FALSE', '', stamp));
+    });
+    rows.push(pbRowFor(headers, key, payload.eventTitle, sk, 'gate', '',
+      '', '', '', s.gate ? 'TRUE' : 'FALSE', '', stamp));
+    rows.push(pbRowFor(headers, key, payload.eventTitle, sk, 'note', '',
+      '', '', '', '', String(s.note || ''), stamp));
+  });
+  if (rows.length) sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, headers.length).setValues(rows);
+  syncNotesToEventDescription(ss, key, stages); // best-effort, never fatal
+  return jsonOut({ ok: true, saved: rows.length });
+}
+function pbRowFor(headers, eventKey, eventTitle, stageKey, rowType, actIndex, text, owner, dueDate, done, noteText, stamp) {
+  var map = {
+    event_id: eventKey, event_title: String(eventTitle || ''), stage_key: stageKey,
+    row_type: rowType, act_index: actIndex === '' ? '' : String(actIndex),
+    text: String(text || ''), owner: String(owner || ''), due_date: String(dueDate || ''),
+    done: String(done || ''), note_text: String(noteText || ''), saved_at: stamp
+  };
+  return headers.map(function (h) {
+    return Object.prototype.hasOwnProperty.call(map, h) ? map[h] : '';
+  });
+}
+/**
+ * doLoadPlaybook
+ * Input: { action:'loadPlaybook', eventKey }
+ * Output: { ok:true, stages:{ <stage_key>:{ gate, note, acts:[{i,x,o,dt,d}] } } }
+ * Empty stages object when nothing saved — client falls back to template.
+ */
+function doLoadPlaybook(payload) {
+  var key = String(payload.eventKey == null ? '' : payload.eventKey).trim();
+  if (!key) return jsonOut({ ok: false, code: 'bad_request', error: 'No event specified' });
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(EVENT_PLAYBOOK_TAB);
+  var out = {};
+  if (sheet && sheet.getLastRow() > 1) {
+    var data = sheet.getDataRange().getValues();
+    var h = data[0].map(function (x) { return String(x || '').trim(); });
+    function col(n) { return h.indexOf(n); }
+    var cId = col('event_id'), cStage = col('stage_key'), cType = col('row_type'),
+        cIdx = col('act_index'), cText = col('text'), cOwn = col('owner'),
+        cDue = col('due_date'), cDone = col('done'), cNote = col('note_text');
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][cId]).trim() !== key) continue;
+      var sk = String(data[i][cStage]);
+      if (!out[sk]) out[sk] = { gate: false, note: '', acts: [] };
+      var t = String(data[i][cType]);
+      if (t === 'activity') {
+        out[sk].acts.push({
+          i: Number(data[i][cIdx]) || 0,
+          x: String(data[i][cText] || ''), o: String(data[i][cOwn] || 'recast'),
+          dt: pbDateStr(data[i][cDue]), d: String(data[i][cDone]).toUpperCase() === 'TRUE'
+        });
+      } else if (t === 'gate') {
+        out[sk].gate = String(data[i][cDone]).toUpperCase() === 'TRUE';
+      } else if (t === 'note') {
+        out[sk].note = String(data[i][cNote] || '');
+      }
+    }
+    Object.keys(out).forEach(function (k) {
+      out[k].acts.sort(function (a2, b2) { return a2.i - b2.i; });
+    });
+  }
+  return jsonOut({ ok: true, stages: out });
+}
+// Date cells may come back as Date objects — serialize as yyyy-MM-dd,
+// pass strings through, never guess (mirrors the gate's date rules).
+function pbDateStr(v) {
+  if (v instanceof Date && !isNaN(v)) {
+    return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  var s = String(v || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : s;
+}
+/**
+ * syncNotesToEventDescription — the team-notes → description sync.
+ * Rewrites the event's `description` cell in the Events tab as:
+ *   <original description, preserved verbatim>
+ *   ⸻ Team Notes ⸻
+ *   [Stage Name] note text
+ * Everything at/after the marker is replaced on each save; the text
+ * above it is never touched. Best-effort: any failure is swallowed
+ * so a description sync problem can never break a playbook save.
+ */
+var PB_NOTES_MARKER = '⸻ Team Notes ⸻';
+function syncNotesToEventDescription(ss, eventKey, stages) {
+  try {
+    var sheet = ss.getSheetByName('Events');
+    if (!sheet) return;
+    var data = sheet.getDataRange().getValues();
+    var h = data[0].map(function (x) { return String(x || '').trim().toLowerCase(); });
+    var cId = h.indexOf('event_id'), cDesc = h.indexOf('description');
+    if (cDesc === -1) return;
+    var names = { plan:'Plan & Build', prepare:'Prepare', event:'Event Day',
+                  follow:'Follow-Up', pipeline:'Pipeline', outcomes:'Outcomes' };
+    var noteLines = [];
+    (stages || []).forEach(function (s) {
+      var n = String(s.note || '').trim();
+      if (n) noteLines.push('[' + (names[s.key] || s.key) + '] ' + n);
+    });
+    for (var i = 1; i < data.length; i++) {
+      var rowKey = cId !== -1 ? String(data[i][cId]).trim() : '';
+      if (rowKey !== eventKey && ('row-' + (i + 1)) !== eventKey) continue;
+      var cur = String(data[i][cDesc] || '');
+      var base = cur.split(PB_NOTES_MARKER)[0].replace(/\s+$/, '');
+      var next = noteLines.length
+        ? (base ? base + '\n\n' : '') + PB_NOTES_MARKER + '\n' + noteLines.join('\n')
+        : base;
+      if (next !== cur) sheet.getRange(i + 1, cDesc + 1).setValue(next);
+      return;
+    }
+  } catch (err) { /* best-effort by design */ }
 }

@@ -155,6 +155,79 @@ additive — every original action is unchanged.
 
 ---
 
+# Event Playbook — saving the 6-stage playbook back to the sheet
+
+The Playbook tab is a **6-stage partner playbook** (Plan & Build → Prepare →
+Event Day → Follow-Up → Pipeline → Outcomes). Everything you change on it —
+activity checkboxes, owner tags (Recast / Partner / Both), due dates, each
+stage's "done when" confirmation, and the per-stage **Notes for the team** —
+is persisted **per event**, with a 1.5-second debounce after each change, and
+loaded straight back the next time the event is opened. The demo event never
+writes to the sheet.
+
+### Where the playbook is stored
+
+A new tab, **`Event_Playbook`**, is **created automatically on first save** —
+same pattern as `Event_Contacts`. It holds, per event: **one row per activity**,
+plus **one `gate` row** (the stage's "done when" confirmation) and **one `note`
+row** per stage. Its columns:
+
+| Column | Meaning |
+| --- | --- |
+| `event_id` | **Join key** — the same `event_id` / `row-N` key the picker, `openEvent` and `Event_Contacts` use. |
+| `event_title` | The event's title, for human readability. |
+| `stage_key` | `plan` · `prepare` · `event` · `follow` · `pipeline` · `outcomes`. |
+| `row_type` | `activity` · `gate` · `note`. |
+| `act_index` | Position of the activity within its stage (activity rows only). |
+| `text` · `owner` · `due_date` · `done` | The activity's label, owner (`recast`/`partner`/`both`), due date (`yyyy-MM-dd`) and TRUE/FALSE done flag. `done` also carries the gate row's confirmed flag. |
+| `note_text` | The stage's team note (note rows only). |
+| `saved_at` | Timestamp of the save. |
+
+Save semantics are **replace, keyed by event** — exactly like `Event_Contacts`:
+every existing `Event_Playbook` row for the event is removed and the current
+state written in its place, so re-saves never accumulate duplicates and rows
+for other events are never touched.
+
+### The two new actions
+
+- **`savePlaybook`** — `{ eventKey, eventTitle, stages:[{ key, gate, note,
+  acts:[{x,o,dt,d}] }] }` → replaces that event's rows. Returns
+  `{ ok, saved }`.
+- **`loadPlaybook`** — `{ eventKey }` → returns
+  `{ ok, stages:{ <stage_key>:{ gate, note, acts:[{i,x,o,dt,d}] } } }` (an
+  empty `stages` object when nothing is saved — the page falls back to the
+  template defaults, with due dates derived from the event's date).
+
+### Notes → event description sync
+
+Stage notes are the team's running description of the event. On every save
+they are also mirrored into the matching **`Events` row's `description` cell**,
+below a `⸻ Team Notes ⸻` marker:
+
+```
+<original description, preserved verbatim>
+
+⸻ Team Notes ⸻
+[Plan & Build] Kickoff call booked.
+[Prepare] Dry run moved to Thursday.
+```
+
+Everything **at/after the marker is replaced** on each save; the original
+description above it is **never touched**. Clearing every note removes the
+marker section entirely. The sync is best-effort — a failure there can never
+break a playbook save. On open, the description is treated as a rendered
+mirror only: the marker section is **never** read back into stage notes
+(those hydrate solely from `Event_Playbook` rows).
+
+> ⚠️ **Redeploy required:** like the other actions, `savePlaybook` and
+> `loadPlaybook` only work once you update the Apps Script project with this
+> repo's `Code.gs` and publish a **new version** of the existing web-app
+> deployment (Section 2 below). Until then the playbook still renders and
+> works locally, but saves will report *"Unknown action"* and nothing
+> persists.
+
+---
+
 # AI Lead Categorization — Setup & How It Works
 
 This adds AI lead categorization to the Event Workspace (`index.html`). The

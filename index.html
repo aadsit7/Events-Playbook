@@ -225,71 +225,15 @@ tbody tr:hover{background:var(--surface-hover)}
 .typebtn{font-size:13px;font-weight:600;padding:9px 15px;border-radius:var(--r-full);background:#fff;border:1px solid var(--border);color:var(--text);cursor:pointer;transition:all .12s}
 .typebtn:hover{border-color:var(--blue);color:var(--blue)}
 .typebtn--active{background:var(--primary);border-color:var(--primary);color:#fff}
-.pbring{display:flex;align-items:center;gap:12px}
-.pbring__meta{font-size:12.5px;color:var(--muted);text-align:right}
-.pbring__meta b{display:block;font-family:var(--display);font-size:18px;color:var(--ink)}
-.ring{position:relative;width:64px;height:64px}
-.ring svg{transform:rotate(-90deg)}
-.ring__num{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--display);font-weight:700;font-size:15px;color:var(--primary)}
 
-/* checklist items (reused inside timeline + anchor cards) */
-.clist{padding:2px 4px 4px}
-.citem{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:var(--r-sm);cursor:pointer;transition:background .12s}
-.citem:hover{background:var(--surface-hover)}
-.cbox{width:18px;height:18px;border-radius:6px;border:2px solid var(--border);flex-shrink:0;display:grid;place-items:center;transition:all .15s}
-.cbox svg{width:11px;height:11px;opacity:0;transform:scale(.5);transition:all .15s;color:#fff}
-.clabel{font-size:13.5px}
-.citem--done .cbox{background:var(--blue);border-color:var(--blue)}
-.citem--done .cbox svg{opacity:1;transform:scale(1)}
-.citem--done .clabel{color:var(--muted);text-decoration:line-through}
-
-/* helper banner + numbered zone headers */
-.pb-help{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text);background:var(--card);border:none;border-radius:var(--radius-card);padding:12px 16px;margin-bottom:22px}
-.pb-help svg{width:18px;height:18px;color:var(--primary);flex-shrink:0}
-.zone{display:flex;align-items:center;gap:12px;margin:8px 0 16px}
-.zone__num{width:40px;height:40px;border-radius:var(--radius-tile);background:var(--blue);display:grid;place-items:center;font-family:var(--display);font-size:17px;font-weight:700;color:#fff;flex-shrink:0}
-.zone__t{font-family:var(--display);font-weight:700;font-size:24px;letter-spacing:-.01em;color:var(--ink)}
-.zone__s{font-family:var(--font);font-weight:400;font-size:13px;color:var(--gray-light);letter-spacing:0}
-
-/* vertical timeline */
-.tl{position:relative}
-.tl__item{display:grid;grid-template-columns:94px 30px 1fr;padding-bottom:12px}
-.tl__meta{text-align:right;padding-top:12px;padding-right:2px}
-.tl__rel{display:block;font-size:12.5px;font-weight:700;line-height:1.2}
-.tl__date{display:block;font-size:12px;color:var(--gray-light);margin-top:2px}
-.tl__node{position:relative}
-.tl__node::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:2px;transform:translateX(-50%);background:var(--border)}
-.tl__item:first-child .tl__node::before{top:18px}
-.tl__item:last-child .tl__node::before{bottom:auto;height:18px}
-.tl__dot{position:absolute;left:50%;top:18px;transform:translate(-50%,-50%);width:12px;height:12px;border-radius:var(--r-full);border:2.5px solid #fff;z-index:1;box-shadow:0 0 0 2px currentColor}
-.tl--leadup .tl__rel{color:var(--blue)}
-.tl--leadup .tl__dot{background:var(--blue);color:var(--blue)}
-.tl--followup .tl__rel{color:var(--blue)}
-.tl--followup .tl__dot{background:var(--blue);color:var(--blue)}
-.tl__card{background:var(--card);border:none;border-radius:var(--radius-card);box-shadow:none;padding:14px 16px}
-.tl__title{font-weight:600;font-size:14px;display:flex;justify-content:space-between;align-items:center;gap:10px}
-.tl__count{font-size:12px;color:var(--gray-light);white-space:nowrap;font-variant-numeric:tabular-nums}
-.mini-bar{height:4px;background:var(--border-light);border-radius:var(--r-full);margin:8px 0 2px;overflow:hidden}
-.mini-bar__fill{height:100%;border-radius:var(--r-full);transition:width .3s}
-.tl--leadup .mini-bar__fill{background:var(--blue)}
-.tl--followup .mini-bar__fill{background:var(--blue)}
-
-/* down-flow arrow between sections */
-.flow{display:flex;justify-content:center;color:var(--hairline);margin:0 0 10px}
-.flow svg{width:22px;height:22px}
-
-/* event + results anchors */
+/* results anchor (kept from v1 — rendered at the bottom of the new panel) */
 .anchor{border-radius:var(--radius-card);padding:24px;box-shadow:none;margin-bottom:10px}
-.anchor--event{background:var(--card);border:none}
 .anchor--results{background:var(--card);border:none}
 .anchor__row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .anchor__badge{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:700;padding:5px 12px;border-radius:var(--r-full);color:#fff}
-.anchor--event .anchor__badge{background:var(--blue)}
 .anchor--results .anchor__badge{background:var(--blue)}
 .anchor__when{font-family:var(--display);font-weight:700;font-size:15px}
-.anchor--event .anchor__when{color:var(--ink)}
 .anchor--results .anchor__when{color:var(--ink)}
-.anchor__title{font-weight:600;font-size:14px;margin:13px 0 3px}
 .rmetrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:6px}
 .rmetric{background:#fff;border:none;border-radius:var(--radius-card);padding:16px;text-align:center}
 .rmetric__n{font-family:var(--display);font-weight:700;font-size:30px;letter-spacing:-.015em;color:var(--ink);line-height:1}
@@ -297,8 +241,94 @@ tbody tr:hover{background:var(--surface-hover)}
 .rnote{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-top:13px}
 .rnote svg{width:14px;height:14px;color:var(--blue);flex-shrink:0}
 @media(max-width:900px){
-  .tl__item{grid-template-columns:74px 26px 1fr}
   .rmetrics{grid-template-columns:1fr}
+}
+
+/* ---------- Playbook v2 — 6-stage partner playbook ----------
+   Everything is scoped under #panel-playbook .pb2 with a pb2- class prefix so
+   nothing collides with existing styles. Flat colors, 4–6px radii. */
+#panel-playbook .pb2{
+  --pb-blue:var(--primary);--pb-cyan:#00BFFF;--pb-green:#0F7A3F;--pb-amber:#CC8800;
+  --pb-coral:#E07050;--pb-light:#F0F0F6;--pb-tint:#FAFAFE;--pb-quote:#F6F8FF;--pb-bord:#DDDDEE;
+}
+#panel-playbook .pb2-headmeta{font-size:12.5px;color:var(--gray-light);text-align:right}
+#panel-playbook .pb2-headmeta b{display:block;font-family:var(--display);font-size:18px;color:var(--ink)}
+/* stage rail */
+#panel-playbook .pb2-railwrap{display:flex;align-items:flex-start;gap:14px;margin:2px 0 14px}
+#panel-playbook .pb2-rail{display:flex;flex:1;min-width:0;overflow-x:auto;padding:6px 0 10px}
+#panel-playbook .pb2-step{position:relative;flex:1;min-width:88px;display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:none;cursor:pointer;padding:0 4px;font-family:var(--font)}
+#panel-playbook .pb2-step::before{content:"";position:absolute;top:13px;left:calc(50% + 17px);right:calc(-50% + 17px);height:2px;background:var(--pb-bord)}
+#panel-playbook .pb2-step:last-child::before{display:none}
+#panel-playbook .pb2-step--done::before{background:var(--pb-green)}
+#panel-playbook .pb2-stepdot{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;background:#fff;border:2px solid var(--pb-bord);color:var(--gray-light);position:relative;z-index:1}
+#panel-playbook .pb2-stepdot svg{width:13px;height:13px}
+#panel-playbook .pb2-step--done .pb2-stepdot{background:var(--pb-green);border-color:var(--pb-green);color:#fff}
+#panel-playbook .pb2-step--cur .pb2-stepdot{background:var(--pb-blue);border-color:var(--pb-blue);color:#fff;box-shadow:0 0 0 4px rgba(0,191,255,.35)}
+#panel-playbook .pb2-steplabel{font-size:11.5px;font-weight:600;color:var(--text);white-space:nowrap}
+#panel-playbook .pb2-step--cur .pb2-steplabel{color:var(--ink)}
+#panel-playbook .pb2-here{font-size:9px;font-weight:800;letter-spacing:.08em;color:var(--pb-blue);background:rgba(0,191,255,.14);border-radius:4px;padding:2px 6px;white-space:nowrap}
+#panel-playbook .pb2-railmeta{font-size:12.5px;color:var(--gray-light);white-space:nowrap;padding-top:12px}
+/* "Do this next" strip */
+#panel-playbook .pb2-next{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--pb-quote);border:1px solid var(--pb-bord);border-radius:6px;padding:12px 16px;margin-bottom:18px}
+#panel-playbook .pb2-next__label{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--pb-blue);white-space:nowrap}
+#panel-playbook .pb2-next__main{flex:1;min-width:200px;font-size:13.5px;color:var(--text)}
+#panel-playbook .pb2-next__main b{color:var(--ink)}
+#panel-playbook .pb2-next__days{font-size:12.5px;font-weight:700;color:var(--pb-blue);background:#fff;border:1px solid var(--pb-bord);border-radius:5px;padding:5px 10px;white-space:nowrap}
+/* stage cards */
+#panel-playbook .pb2-cards{display:flex;flex-direction:column;gap:12px;margin-bottom:18px}
+#panel-playbook .pb2-card{background:#fff;border:1px solid var(--pb-bord);border-radius:6px}
+#panel-playbook .pb2-card--done{border-color:rgba(15,122,63,.45);background:var(--pb-tint)}
+#panel-playbook .pb2-cardhead{display:flex;align-items:center;gap:12px;width:100%;background:none;border:none;padding:14px 16px;cursor:pointer;text-align:left;font-family:var(--font)}
+#panel-playbook .pb2-cardnum{width:28px;height:28px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:13px;font-weight:700;background:var(--pb-light);color:var(--text)}
+#panel-playbook .pb2-cardnum svg{width:14px;height:14px}
+#panel-playbook .pb2-card--done .pb2-cardnum{background:var(--pb-green);color:#fff}
+#panel-playbook .pb2-cardname{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+#panel-playbook .pb2-cardname b{font-size:14.5px;color:var(--ink)}
+#panel-playbook .pb2-cardsub{font-size:12px;color:var(--gray-light)}
+#panel-playbook .pb2-chip{font-size:11px;font-weight:700;border-radius:5px;padding:4px 9px;white-space:nowrap;flex-shrink:0}
+#panel-playbook .pb2-chip--done{background:rgba(15,122,63,.12);color:var(--pb-green)}
+#panel-playbook .pb2-chip--cur{background:var(--pb-blue);color:#fff}
+#panel-playbook .pb2-chip--next{background:var(--pb-light);color:var(--gray-light)}
+#panel-playbook .pb2-chev{width:16px;height:16px;color:var(--gray-light);flex-shrink:0;transition:transform .15s}
+#panel-playbook .pb2-card--open .pb2-chev{transform:rotate(180deg)}
+#panel-playbook .pb2-cardbody{display:none;padding:2px 16px 16px;border-top:1px solid var(--pb-light)}
+#panel-playbook .pb2-card--open .pb2-cardbody{display:block}
+/* activity rows */
+#panel-playbook .pb2-act{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;padding:9px 0;border-bottom:1px solid var(--pb-light)}
+#panel-playbook .pb2-tick{width:20px;height:20px;border-radius:5px;border:2px solid var(--pb-bord);background:#fff;flex-shrink:0;display:grid;place-items:center;cursor:pointer;color:#fff;padding:0}
+#panel-playbook .pb2-tick svg{width:11px;height:11px;opacity:0}
+#panel-playbook .pb2-act--done .pb2-tick{background:var(--pb-green);border-color:var(--pb-green)}
+#panel-playbook .pb2-act--done .pb2-tick svg{opacity:1}
+#panel-playbook .pb2-acttext{flex:1;min-width:150px;font-size:13.5px;color:var(--ink);cursor:pointer}
+#panel-playbook .pb2-act--done .pb2-acttext{color:var(--gray-light);text-decoration:line-through}
+#panel-playbook .pb2-owner{font-size:11px;font-weight:700;border-radius:999px;padding:4px 11px;cursor:pointer;border:1px solid transparent;white-space:nowrap;font-family:var(--font)}
+#panel-playbook .pb2-owner--recast{background:var(--pb-blue);color:#fff}
+#panel-playbook .pb2-owner--partner{background:#fff;color:var(--pb-coral);border-color:var(--pb-coral)}
+#panel-playbook .pb2-owner--both{background:var(--pb-cyan);color:#fff}
+#panel-playbook .pb2-date{font-family:var(--font);font-size:12px;color:var(--text);background:#fff;border:1px solid var(--pb-bord);border-radius:5px;padding:4px 7px}
+/* "this stage is done when" bar */
+#panel-playbook .pb2-gate{display:flex;align-items:center;gap:11px;margin-top:12px;background:rgba(204,136,0,.06);border:1px solid var(--pb-amber);border-radius:6px;padding:11px 13px}
+#panel-playbook .pb2-gatecheck{width:24px;height:24px;border-radius:50%;border:2px solid var(--pb-amber);background:#fff;color:#fff;flex-shrink:0;display:grid;place-items:center;cursor:pointer;padding:0}
+#panel-playbook .pb2-gatecheck svg{width:12px;height:12px;opacity:0}
+#panel-playbook .pb2-gate--on{background:rgba(15,122,63,.07);border-color:var(--pb-green)}
+#panel-playbook .pb2-gate--on .pb2-gatecheck{background:var(--pb-green);border-color:var(--pb-green)}
+#panel-playbook .pb2-gate--on .pb2-gatecheck svg{opacity:1}
+#panel-playbook .pb2-gatetext{font-size:13px;color:var(--text)}
+#panel-playbook .pb2-gatetext b{color:var(--pb-amber)}
+#panel-playbook .pb2-gate--on .pb2-gatetext b{color:var(--pb-green)}
+/* team notes */
+#panel-playbook .pb2-notes{margin-top:12px}
+#panel-playbook .pb2-noteslabel{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gray-light);margin-bottom:6px}
+#panel-playbook .pb2-note{width:100%;font-family:var(--font);font-size:13px;color:var(--ink);background:var(--pb-tint);border:1px solid var(--pb-bord);border-radius:5px;padding:9px 11px;resize:vertical;min-height:44px}
+#panel-playbook .pb2-note:focus{outline:none;border-color:var(--pb-blue)}
+/* transient "Saved ✓" badge (appended to body) */
+#pb2-saved{position:fixed;right:18px;bottom:18px;z-index:60;background:#0F7A3F;color:#fff;font-size:12.5px;font-weight:700;padding:8px 14px;border-radius:6px;opacity:0;transform:translateY(6px);transition:all .25s;pointer-events:none}
+#pb2-saved.show{opacity:1;transform:none}
+@media(max-width:600px){
+  #panel-playbook .pb2-railwrap{flex-direction:column;align-items:stretch;gap:2px}
+  #panel-playbook .pb2-rail{width:100%}
+  #panel-playbook .pb2-railmeta{padding-top:0}
+  #panel-playbook .pb2-step{min-width:78px}
 }
 
 .note{margin-top:24px;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px}
@@ -406,7 +436,7 @@ tbody tr:hover{background:var(--surface-hover)}
 
   <div class="note">
     <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/><path d="M10 9v4.5M10 6.5v.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-    Event details sync live from the Events tab of the Partner Portal Google Sheet — use “Change event” to switch (the new event’s password is required if it has one). Each event opens with only its own contacts: upload a target list and it’s saved to the Event_Contacts tab of the sheet, then reloaded automatically the next time you open the event. Playbook checklist progress is a local working copy.
+    Event details sync live from the Events tab of the Partner Portal Google Sheet — use “Change event” to switch (the new event’s password is required if it has one). Each event opens with only its own contacts: upload a target list and it’s saved to the Event_Contacts tab of the sheet, then reloaded automatically the next time you open the event. Playbook progress — checkboxes, owners, due dates, stage confirmations and team notes — is saved to the Event_Playbook tab as you work, and stage notes are mirrored into the event’s description.
   </div>
 </div>
 
@@ -580,18 +610,11 @@ tbody tr:hover{background:var(--surface-hover)}
     roleFilter:'all',
     aiAnalyzed:false,
     eventType:'Conference',
-    playbook:{
-      lead_4w:seed(['Finalize target accounts','Set meeting goals & quota'],2),
-      lead_2w:seed(['Build outreach cadence','Partner alignment call','Assign account owners'],3),
-      lead_1w:seed(['Book pre-set meetings','Confirm logistics & materials'],1),
-      lead_1d:seed(['Review talk tracks as a team','Tech / booth / demo check'],0),
-      at_event:seed(['Deliver talk tracks','Qualify with key questions','Log notes in CRM','Book the next meeting'],0),
-      fu_24h:seed(['Send personalized emails','Send LinkedIn connects','Log all conversations'],0),
-      fu_2_7d:seed(['SDR follow-up sequence','AE outreach','Executive touches','Marketing nurture'],0),
-      fu_30_90d:seed(['Weekly pipeline review','Advance & close opps','Capture lessons learned'],0)
-    }
+    // Six-stage playbook state. Built lazily by pbFreshState(state.event.start)
+    // on first render and rebuilt for each opened event (saved Event_Playbook
+    // rows are then merged on top — see loadSavedPlaybook).
+    playbook:[]
   };
-  function seed(arr,done){return arr.map(function(t,i){return {text:t,done:i<done};});}
 
   /* ================= computed ================= */
   function statusCount(k){var c=0;state.contacts.forEach(function(x){if(k==='none'?(x.status!=='meeting'&&x.status!=='declined'):x.status===k)c++;});return c;}
@@ -876,93 +899,274 @@ tbody tr:hover{background:var(--surface-hover)}
     });
   }
 
-  /* ================= PLAYBOOK ================= */
-  // Timeline dates are derived from the selected event's real dates: lead-up
-  // offsets count back from the start date, follow-up offsets count forward
-  // from the end date. If the event has no parseable date, the label is blank.
-  var LEADUP=[
-    {key:'lead_4w',rel:'4 weeks out',off:-28,title:'Set the target list & goals'},
-    {key:'lead_2w',rel:'2 weeks out',off:-14,title:'Build outreach & align with partner'},
-    {key:'lead_1w',rel:'1 week out',off:-7,title:'Lock in meetings & logistics'},
-    {key:'lead_1d',rel:'Day before',off:-1,title:'Final prep & team huddle'}
+  /* ================= PLAYBOOK (v2 — 6-stage partner playbook) =================
+     Six lifecycle stages, each with activity rows (checkbox + owner tag + due
+     date), an amber "this stage is done when" exit bar, and a team-notes box.
+     Due dates default to offsets from the opened event's real start date; every
+     change is persisted per event to the Event_Playbook tab (debounced — see
+     pbQueueSave) and stage notes are mirrored into the Events row's description
+     under the "⸻ Team Notes ⸻" marker. The demo event renders the same UI but
+     never writes to the sheet. */
+
+  // Default activity template. ownerDefault: 'recast' | 'partner' | 'both'.
+  // off = default due date as days from event start (negative = before).
+  var PB_STAGES_TEMPLATE=[
+    { key:'plan',    name:'Plan & Build', timing:'4–6 wks out',
+      done_when:'Goals, date, speakers and target list are locked.',
+      acts:[
+        {x:'Agree goals & target list',            o:'both',   off:-28},
+        {x:'Confirm date, speakers & agenda',      o:'both',   off:-27},
+        {x:'Build landing page & registration',    o:'recast', off:-23},
+        {x:'Set up invites & tracking',            o:'recast', off:-22}]},
+    { key:'prepare', name:'Prepare', timing:'3 wks – day before',
+      done_when:'Registrations on track and the dry run has passed.',
+      acts:[
+        {x:'Send invites & promote the event',     o:'both',   off:-17},
+        {x:'Book pre-set meetings',                o:'recast', off:-10},
+        {x:'Dry run — deck, tech, timing',         o:'both',   off:-7},
+        {x:'Confirm logistics & materials',        o:'recast', off:-2}]},
+    { key:'event',   name:'Event Day', timing:'',   // timing filled from event date
+      done_when:'The event ran and attendance & interest were captured.',
+      acts:[
+        {x:'Deliver the presentation',             o:'both',   off:0},
+        {x:'Run polls & Q&A',                      o:'partner',off:0},
+        {x:'Capture notes & interest signals',     o:'recast', off:0},
+        {x:'Book next meetings live',              o:'both',   off:0}]},
+    { key:'follow',  name:'Follow-Up', timing:'Within 1 week',
+      done_when:'Every contact is followed up and marked.',
+      acts:[
+        {x:'Send thank-you + recording',           o:'recast', off:1},
+        {x:'Call & email hot contacts',            o:'recast', off:2},
+        {x:'Partner follows up their accounts',    o:'partner',off:4},
+        {x:'Mark every contact — meeting / not interested / nurture', o:'recast', off:7}]},
+    { key:'pipeline',name:'Pipeline', timing:'1–2 months after',
+      done_when:'Meetings held and opportunities created.',
+      acts:[
+        {x:'Hold the booked meetings',             o:'recast', off:15},
+        {x:'Create opportunities in CRM',          o:'recast', off:22},
+        {x:'Share pipeline update with partner',   o:'both',   off:29}]},
+    { key:'outcomes',name:'Outcomes', timing:'After',
+      done_when:'Results reviewed and lessons captured for next time.',
+      acts:[
+        {x:'Report results & ROI',                 o:'recast', off:60},
+        {x:'Debrief with partner',                 o:'both',   off:63},
+        {x:'Write down what to improve next event',o:'both',   off:63}]}
   ];
-  var FOLLOWUP=[
-    {key:'fu_24h',rel:'Within 24 hrs',off:1,prefix:'by ',title:'Immediate personal follow-up'},
-    {key:'fu_2_7d',rel:'2–7 days',off:7,prefix:'by ',title:'Multi-touch outreach'},
-    {key:'fu_30_90d',rel:'30–90 days',range:[30,90],title:'Convert to pipeline & revenue'}
-  ];
-  function tlDate(meta){
-    var ev=state.event, base=meta.off<0?ev.start:(ev.end||ev.start);
-    if(!base) return '';
-    if(meta.range) return MONTHS[addDays(base,meta.range[0]).getMonth()]+'–'+MONTHS[addDays(base,meta.range[1]).getMonth()];
-    return (meta.prefix||'')+fmtShort(addDays(base,meta.off));
+  function pbFmtISO(d){
+    function p2(n){return (n<10?'0':'')+n;}
+    return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());
   }
-  function playbookStats(){
-    var done=0,total=0;
-    Object.keys(state.playbook).forEach(function(k){state.playbook[k].forEach(function(i){total++;if(i.done)done++;});});
-    return {done:done,total:total,pct:total?Math.round(done/total*100):0};
+  // Fresh runtime state from the template. Unparseable/missing event dates
+  // leave every due date blank — never guessed (house rule).
+  function pbFreshState(startDate){
+    return PB_STAGES_TEMPLATE.map(function(s){
+      return {key:s.key,name:s.name,timing:s.timing,done_when:s.done_when,gate:false,note:'',
+        acts:s.acts.map(function(a){
+          return {x:a.x,o:a.o,dt:startDate?pbFmtISO(addDays(startDate,a.off)):'',d:false};
+        })};
+    });
+  }
+  // Which cards are expanded. null = re-init on next render (open the current
+  // stage). Reset whenever the playbook state is rebuilt for an event.
+  var pbOpen=null;
+  function pbStage(key){
+    for(var i=0;i<state.playbook.length;i++){ if(state.playbook[i].key===key) return state.playbook[i]; }
+    return null;
+  }
+  // Current stage = the first stage whose exit bar is not confirmed.
+  function pbCurrentIdx(){
+    for(var i=0;i<state.playbook.length;i++){ if(!state.playbook[i].gate) return i; }
+    return state.playbook.length;
+  }
+  function pbStagesComplete(){var n=0;state.playbook.forEach(function(s){if(s.gate)n++;});return n;}
+  function pbPartnerName(){return (state.event&&state.event.partner)||'Partner';}
+  function pbOwnerLabel(o){
+    if(o==='recast') return 'Recast';
+    if(o==='partner') return pbPartnerName();
+    return 'Both';
+  }
+  // Render-time only: stored activity text stays generic so template edits and
+  // saved rows never diverge per partner.
+  function pbActText(a){
+    var t=a.x;
+    if(t==='Partner follows up their accounts'&&state.event.partner) t=state.event.partner+' follows up their accounts';
+    return t;
+  }
+  function pbFmtDue(dt){var d=parseSheetDate(dt);return d?fmtShort(d):'';}
+  var PB_CHECK='<svg viewBox="0 0 14 14" fill="none"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  function pbRail(){
+    var cur=pbCurrentIdx(),g=pbStagesComplete();
+    var steps=state.playbook.map(function(s,i){
+      var cls=s.gate?' pb2-step--done':(i===cur?' pb2-step--cur':'');
+      return '<button type="button" class="pb2-step'+cls+'" data-stage="'+s.key+'">'
+        +'<span class="pb2-stepdot">'+(s.gate?PB_CHECK:(i+1))+'</span>'
+        +'<span class="pb2-steplabel">'+esc(s.name)+'</span>'
+        +(i===cur?'<span class="pb2-here">YOU ARE HERE</span>':'')
+        +'</button>';
+    }).join('');
+    return '<div class="pb2-railwrap"><div class="pb2-rail">'+steps+'</div>'
+      +'<div class="pb2-railmeta">'+(cur>=state.playbook.length?'All stages complete':'Stage '+(cur+1)+' of 6')+' · '+g+' complete</div></div>';
+  }
+  function pbNextStrip(){
+    var days='';
+    if(state.event.start){
+      var diff=Math.round((state.event.start.getTime()-startOfToday().getTime())/86400000);
+      if(diff>0) days=diff+' day'+(diff===1?'':'s')+' to event';
+      else if(diff===0) days='Event day is today';
+      else days=(-diff)+' day'+(diff===-1?'':'s')+' since the event';
+    }
+    var daysHtml=days?'<span class="pb2-next__days">'+esc(days)+'</span>':'';
+    var cur=pbCurrentIdx();
+    if(cur>=state.playbook.length){
+      return '<div class="pb2-next"><span class="pb2-next__label">All done</span>'
+        +'<div class="pb2-next__main"><b>All 6 stages complete</b> — review Outcomes and capture the lessons.</div>'+daysHtml+'</div>';
+    }
+    var s=state.playbook[cur],act=null;
+    for(var i=0;i<s.acts.length;i++){ if(!s.acts[i].d){act=s.acts[i];break;} }
+    var main;
+    if(act){
+      var due=pbFmtDue(act.dt);
+      main='<b>'+esc(pbActText(act))+'</b> · '+esc(pbOwnerLabel(act.o))+(due?' · due '+esc(due):'');
+    } else {
+      main='All activities checked — confirm the “done when” bar to finish <b>'+esc(s.name)+'</b>.';
+    }
+    return '<div class="pb2-next"><span class="pb2-next__label">Do this next · '+esc(s.name)+'</span>'
+      +'<div class="pb2-next__main">'+main+'</div>'+daysHtml+'</div>';
+  }
+  function pbCard(s,i){
+    var cur=pbCurrentIdx();
+    var doneActs=s.acts.filter(function(a){return a.d;}).length;
+    var open=!!(pbOpen&&pbOpen[s.key]);
+    var chip=s.gate?'<span class="pb2-chip pb2-chip--done">Complete</span>'
+      :(i===cur?'<span class="pb2-chip pb2-chip--cur">In progress</span>'
+      :'<span class="pb2-chip pb2-chip--next">Up next</span>');
+    // Event Day's timing label comes from the event's real date.
+    var timing=s.key==='event'?(fmtRange(state.event.start,state.event.end)||''):s.timing;
+    var acts=s.acts.map(function(a,j){
+      return '<div class="pb2-act'+(a.d?' pb2-act--done':'')+'" data-stage="'+s.key+'" data-idx="'+j+'">'
+        +'<button type="button" class="pb2-tick" aria-label="Mark activity done">'+PB_CHECK+'</button>'
+        +'<span class="pb2-acttext">'+esc(pbActText(a))+'</span>'
+        +'<button type="button" class="pb2-owner pb2-owner--'+a.o+'" title="Owner — click to switch Recast / '+esc(pbPartnerName())+' / Both">'+esc(pbOwnerLabel(a.o))+'</button>'
+        +'<input type="date" class="pb2-date" value="'+esc(a.dt||'')+'" aria-label="Due date">'
+        +'</div>';
+    }).join('');
+    var gate='<div class="pb2-gate'+(s.gate?' pb2-gate--on':'')+'" data-stage="'+s.key+'">'
+      +'<button type="button" class="pb2-gatecheck" aria-label="Confirm this stage is done">'+PB_CHECK+'</button>'
+      +'<div class="pb2-gatetext"><b>This stage is done when:</b> '+esc(s.done_when)+'</div>'
+      +'</div>';
+    var notes='<div class="pb2-notes"><label class="pb2-noteslabel">Notes for the team</label>'
+      +'<textarea class="pb2-note" data-stage="'+s.key+'" rows="2" placeholder="Anything the team should know — synced into the event description.">'+esc(s.note||'')+'</textarea></div>';
+    return '<div class="pb2-card'+(open?' pb2-card--open':'')+(s.gate?' pb2-card--done':'')+'" id="pb2-card-'+s.key+'">'
+      +'<button type="button" class="pb2-cardhead" data-stage="'+s.key+'">'
+      +'<span class="pb2-cardnum">'+(s.gate?PB_CHECK:(i+1))+'</span>'
+      +'<span class="pb2-cardname"><b>'+esc(s.name)+'</b><span class="pb2-cardsub">'+doneActs+'/'+s.acts.length+' done'+(timing?' · '+esc(timing):'')+'</span></span>'
+      +chip
+      +'<svg class="pb2-chev" viewBox="0 0 20 20" fill="none"><path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      +'</button>'
+      +'<div class="pb2-cardbody">'+acts+gate+notes+'</div>'
+      +'</div>';
   }
   function renderPlaybook(){
-    var st=playbookStats();
+    if(!state.playbook||!state.playbook.length) state.playbook=pbFreshState(state.event.start);
+    if(!pbOpen){
+      pbOpen={};
+      var c=pbCurrentIdx();
+      if(c<state.playbook.length) pbOpen[state.playbook[c].key]=true;
+    }
     var types=['Direct Event','Partner Event','Conference','Webinar','User Group'];
     // A synced event may use a type outside the presets (e.g. Roundtable,
     // Campaign) — surface it verbatim rather than forcing a wrong preset.
     if(state.eventType && types.indexOf(state.eventType)<0) types.unshift(state.eventType);
     var typebar=types.map(function(t){return '<button class="typebtn'+(t===state.eventType?' typebtn--active':'')+'" data-type="'+esc(t)+'">'+esc(t)+'</button>';}).join('');
-
+    var g=pbStagesComplete(),pct=Math.round(g/6*100);
     var head=''
       +'<div class="pbhead">'
       +'  <div><div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gray-light);margin-bottom:8px">Event type</div><div class="typebar">'+typebar+'</div></div>'
-      +'  <div class="pbring"><div class="pbring__meta"><b>'+st.done+' / '+st.total+'</b>tasks complete</div>'
-      +'    <div class="ring"><svg width="64" height="64"><circle cx="32" cy="32" r="26" stroke="var(--border-light)" stroke-width="7" fill="none"/>'
-      +'      <circle cx="32" cy="32" r="26" stroke="var(--primary)" stroke-width="7" fill="none" stroke-linecap="round" stroke-dasharray="163.4" stroke-dashoffset="'+(163.4*(1-st.pct/100)).toFixed(1)+'"/></svg>'
-      +'      <div class="ring__num">'+st.pct+'%</div></div></div>'
+      +'  <div class="pb2-headmeta"><b>'+g+' / 6</b>stages complete</div>'
       +'</div>';
-
-    var help='<div class="pb-help"><svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.6"/><path d="M10 5.5v4.7l3 1.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Plan backwards from the event date, execute on-site, then work the follow-up clock until it becomes pipeline.</div>';
-
-    var z1='<div class="zone zone--1"><span class="zone__num">1</span><span class="zone__t">Work back to the event<span class="zone__s"> · schedule prep by date</span></span></div>';
-    var lead='<div class="tl tl--leadup">'+LEADUP.map(tlItem).join('')+'</div>';
-
-    var z2='<div class="zone zone--2"><span class="zone__num">2</span><span class="zone__t">Event execution<span class="zone__s"> · the anchor</span></span></div>';
-
-    var z3='<div class="zone zone--3"><span class="zone__num">3</span><span class="zone__t">Follow up to drive results<span class="zone__s"> · work the clock</span></span></div>';
-    var follow='<div class="tl tl--followup">'+FOLLOWUP.map(tlItem).join('')+'</div>';
-
-    el('panel-playbook').innerHTML=head+help
-      +z1+lead+flowArrow()
-      +z2+eventAnchor()+flowArrow()
-      +z3+follow+flowArrow()+resultsAnchor();
-    el('tab-playbook-count').textContent=st.pct+'%';
+    var cards=state.playbook.map(pbCard).join('');
+    el('panel-playbook').innerHTML='<div class="pb2">'+head+pbRail()+pbNextStrip()
+      +'<div class="pb2-cards">'+cards+'</div>'+resultsAnchor()+'</div>';
+    el('tab-playbook-count').textContent=pct+'%';
   }
-  function checklist(phaseKey,items){
-    return items.map(function(it,idx){
-      return '<div class="citem'+(it.done?' citem--done':'')+'" data-phase="'+phaseKey+'" data-idx="'+idx+'">'
-        +'<span class="cbox"><svg viewBox="0 0 14 14" fill="none"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'
-        +'<span class="clabel">'+esc(it.text)+'</span></div>';
-    }).join('');
+
+  /* ---- Playbook persistence (Event_Playbook tab, mirrors Event_Contacts) ---- */
+  var PB_NOTES_MARKER='⸻ Team Notes ⸻';
+  var pbSaveTimer=null;
+  function pbSerialize(){
+    return state.playbook.map(function(s){
+      return {key:s.key,gate:!!s.gate,note:s.note||'',
+        acts:s.acts.map(function(a){return {x:a.x,o:a.o,dt:a.dt||'',d:!!a.d};})};
+    });
   }
-  function stageProgress(items){var d=items.filter(function(i){return i.done;}).length,t=items.length;return {d:d,t:t,pct:t?Math.round(d/t*100):0};}
-  function tlItem(meta){
-    var items=state.playbook[meta.key],p=stageProgress(items);
-    return '<div class="tl__item">'
-      +'<div class="tl__meta"><span class="tl__rel">'+esc(meta.rel)+'</span><span class="tl__date">'+esc(tlDate(meta))+'</span></div>'
-      +'<div class="tl__node"><span class="tl__dot"></span></div>'
-      +'<div class="tl__card">'
-      +'  <div class="tl__title">'+esc(meta.title)+'<span class="tl__count">'+p.d+'/'+p.t+'</span></div>'
-      +'  <div class="mini-bar"><div class="mini-bar__fill" style="width:'+p.pct+'%"></div></div>'
-      +'  <div class="clist">'+checklist(meta.key,items)+'</div>'
-      +'</div></div>';
+  // Debounced save — every playbook mutation calls this. The demo event (no
+  // real sheet key) never writes, same rule as the contacts save.
+  function pbQueueSave(){
+    if(!aiConfigured()||!eventIsSheet()) return;
+    var ev=state.event;
+    clearTimeout(pbSaveTimer);
+    pbSaveTimer=setTimeout(function(){
+      if(state.event!==ev) return;   // event switched while the debounce ran
+      pbSaveNow(ev);
+    },1500);
   }
-  function eventAnchor(){
-    var items=state.playbook.at_event,p=stageProgress(items);
-    return '<div class="anchor anchor--event">'
-      +'<div class="anchor__row"><span class="anchor__badge"><svg viewBox="0 0 16 16" width="14" height="14" fill="none"><path d="M8 1.4l1.85 3.75 4.15.6-3 2.92.71 4.13L8 10.95 4.29 12.8 5 8.67l-3-2.92 4.15-.6L8 1.4z" fill="currentColor"/></svg>The event</span>'
-      +'<span class="anchor__when">'+esc([fmtRange(state.event.start,state.event.end),state.event.location].filter(Boolean).join(' · ')||'Date TBD')+'</span></div>'
-      +'<div class="anchor__title">Execute on-site <span class="tl__count" style="font-weight:400;margin-left:6px">'+p.d+'/'+p.t+' done</span></div>'
-      +'<div class="mini-bar"><div class="mini-bar__fill" style="width:'+p.pct+'%;background:var(--blue)"></div></div>'
-      +'<div class="clist">'+checklist('at_event',items)+'</div>'
-      +'</div>';
+  function pbSaveNow(ev){
+    aiFetch({action:'savePlaybook',eventKey:ev.key,eventTitle:ev.title,stages:pbSerialize()}).then(function(res){
+      if(state.event!==ev) return;
+      if(res&&res.ok){
+        pbFlashSaved();
+        pbApplyNotesToDescription();
+      }
+    }).catch(function(){/* silent — next edit re-queues the save */});
+  }
+  // Mirror the sheet-side description sync locally so the header summary
+  // reflects the notes without a reload (same base + marker + notes shape).
+  function pbApplyNotesToDescription(){
+    var lines=[];
+    state.playbook.forEach(function(s){
+      var n=String(s.note||'').trim();
+      if(n) lines.push('['+s.name+'] '+n);
+    });
+    var cur=String(state.event.description||'');
+    var base=cur.split(PB_NOTES_MARKER)[0].replace(/\s+$/,'');
+    var next=lines.length?(base?base+'\n\n':'')+PB_NOTES_MARKER+'\n'+lines.join('\n'):base;
+    if(next!==cur){state.event.description=next;renderEventHeader();}
+  }
+  function pbFlashSaved(){
+    var b=el('pb2-saved');
+    if(!b){b=document.createElement('div');b.id='pb2-saved';b.textContent='Saved ✓';document.body.appendChild(b);}
+    b.classList.add('show');clearTimeout(b._t);b._t=setTimeout(function(){b.classList.remove('show');},1600);
+  }
+  // Hydrate saved Event_Playbook rows onto the fresh template state: saved
+  // o/dt/d/gate/note win; the template supplies text, labels and any activity
+  // a saved row doesn't cover (so later template edits never orphan old saves).
+  function pbMergeSaved(saved){
+    state.playbook.forEach(function(s){
+      var sv=saved[s.key]; if(!sv) return;
+      s.gate=!!sv.gate;
+      s.note=String(sv.note||'');
+      (sv.acts||[]).forEach(function(a,j){
+        var idx=(a&&a.i!=null&&!isNaN(Number(a.i)))?Number(a.i):j;
+        var t=s.acts[idx]; if(!t) return;
+        if(a.o==='recast'||a.o==='partner'||a.o==='both') t.o=a.o;
+        t.dt=String(a.dt||'');
+        t.d=!!a.d;
+      });
+    });
+  }
+  // Pull this event's saved playbook from the sheet. Non-blocking, silent on
+  // failure — the fresh template state simply stands (same posture as
+  // listEventContacts).
+  function loadSavedPlaybook(ev){
+    if(!aiConfigured()||!ev||!ev.key) return;
+    aiFetch({action:'loadPlaybook',eventKey:ev.key}).then(function(res){
+      if(state.event!==ev) return;               // user switched events while loading
+      if(res&&res.ok&&res.stages&&Object.keys(res.stages).length){
+        pbMergeSaved(res.stages);
+        pbOpen=null;
+        renderPlaybook();
+      }
+    }).catch(function(){/* silent — no saved playbook is a normal first-open state */});
   }
   function resultsAnchor(){
     var mtg=nMeeting(),dec=nDeclined(),todo=nTodo();
@@ -977,7 +1181,6 @@ tbody tr:hover{background:var(--surface-hover)}
       +'<div class="rnote"><svg viewBox="0 0 16 16" fill="none"><path d="M2 8.5l4 4 8-9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Updates live as you mark contacts on the Contacts tab.</div>'
       +'</div>';
   }
-  function flowArrow(){return '<div class="flow"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14m0 0l-5-5m5 5l5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';}
 
   /* ================= EVENT HEADER ================= */
   var CAL_SVG='<svg viewBox="0 0 20 20" fill="none"><rect x="3" y="4" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 9h14M7 2v4M13 2v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
@@ -1074,13 +1277,73 @@ tbody tr:hover{background:var(--surface-hover)}
     });
   }
 
-  // Playbook: toggle + type (delegated)
+  // Playbook v2 (delegated): rail jump, card toggle, activity tick, owner
+  // cycle, gate confirm, date change, note edit. Every mutation queues a
+  // debounced save (pbQueueSave).
   el('panel-playbook').addEventListener('click',function(e){
-    var item=e.target.closest('.citem');
-    if(item){var p=item.getAttribute('data-phase'),i=Number(item.getAttribute('data-idx'));
-      state.playbook[p][i].done=!state.playbook[p][i].done;renderPlaybook();return;}
+    var step=e.target.closest('.pb2-step');
+    if(step){
+      var sk=step.getAttribute('data-stage');
+      pbOpen[sk]=true;renderPlaybook();
+      var card=document.getElementById('pb2-card-'+sk);
+      if(card) card.scrollIntoView({behavior:'smooth',block:'nearest'});
+      return;
+    }
+    var actEl=e.target.closest('.pb2-act');
+    if(actEl){
+      var as=pbStage(actEl.getAttribute('data-stage')),ai=Number(actEl.getAttribute('data-idx'));
+      if(!as||!as.acts[ai]) return;
+      if(e.target.closest('.pb2-tick')||e.target.closest('.pb2-acttext')){
+        as.acts[ai].d=!as.acts[ai].d;
+        pbQueueSave();renderPlaybook();return;
+      }
+      if(e.target.closest('.pb2-owner')){
+        var seq=['recast','partner','both'];
+        as.acts[ai].o=seq[(seq.indexOf(as.acts[ai].o)+1)%seq.length];
+        pbQueueSave();renderPlaybook();return;
+      }
+      return; // click on the date input — handled by the change listener
+    }
+    var gc=e.target.closest('.pb2-gatecheck');
+    if(gc){
+      var gw=gc.closest('.pb2-gate'),gs=gw&&pbStage(gw.getAttribute('data-stage'));
+      if(!gs) return;
+      gs.gate=!gs.gate;
+      var nextKey=null;
+      if(gs.gate){
+        // Completed: collapse this card, advance the rail, open the next stage.
+        pbOpen[gs.key]=false;
+        var cur=pbCurrentIdx();
+        if(cur<state.playbook.length){nextKey=state.playbook[cur].key;pbOpen[nextKey]=true;}
+      }
+      pbQueueSave();renderPlaybook();
+      if(nextKey){
+        var nc=document.getElementById('pb2-card-'+nextKey);
+        if(nc) nc.scrollIntoView({behavior:'smooth',block:'nearest'});
+      }
+      return;
+    }
+    var head=e.target.closest('.pb2-cardhead');
+    if(head){
+      var hk=head.getAttribute('data-stage');
+      pbOpen[hk]=!pbOpen[hk];renderPlaybook();return;
+    }
     var tb=e.target.closest('.typebtn');
     if(tb){state.eventType=tb.getAttribute('data-type');renderPlaybook();}
+  });
+  el('panel-playbook').addEventListener('change',function(e){
+    if(!e.target.classList.contains('pb2-date')) return;
+    var actEl=e.target.closest('.pb2-act');if(!actEl) return;
+    var s=pbStage(actEl.getAttribute('data-stage')),i=Number(actEl.getAttribute('data-idx'));
+    if(!s||!s.acts[i]) return;
+    s.acts[i].dt=e.target.value||'';
+    pbQueueSave();renderPlaybook();
+  });
+  el('panel-playbook').addEventListener('input',function(e){
+    if(!e.target.classList.contains('pb2-note')) return;
+    var s=pbStage(e.target.getAttribute('data-stage'));if(!s) return;
+    s.note=e.target.value;
+    pbQueueSave(); // no re-render — keeps the textarea focused while typing
   });
 
   // Upload (delegated buttons -> hidden input)
@@ -1558,6 +1821,9 @@ tbody tr:hover{background:var(--surface-hover)}
       start:start, end:end,
       location:String(raw.location||'').trim(),
       description:String(raw.description||'').trim(),
+      // Partner name from the Events row's `partner` column (when present) —
+      // used as the label on the playbook's partner owner tags.
+      partner:String(raw.partner||'').trim(),
       leadCount:isNaN(leads)?null:leads,
       source:'sheet'
     };
@@ -1805,11 +2071,17 @@ tbody tr:hover{background:var(--surface-hover)}
     // A freshly opened event starts with NO contact data of its own — the demo
     // list (and any previous event's contacts) is cleared. The only contacts an
     // event ever shows are the ones we saved for it (loaded just below) or the
-    // ones the user uploads next. Playbook checklist progress is left as-is.
+    // ones the user uploads next.
     state.contacts=[];
     state.fileName=''; state.updated=''; state.aiAnalyzed=false;
     state.search=''; state.filter='all'; state.roleFilter='all';
     savedState={count:0,dirty:false,busy:false};
+    // Playbook: drop any pending save for the previous event, rebuild the six
+    // stages with due dates derived from THIS event's real date, then merge any
+    // saved Event_Playbook rows on top (non-blocking, silent on failure).
+    clearTimeout(pbSaveTimer);
+    state.playbook=pbFreshState(ev.start);
+    pbOpen=null;
     renderEventHeader();
     rerenderData();
     renderPlaybook();
@@ -1817,6 +2089,7 @@ tbody tr:hover{background:var(--surface-hover)}
     // Reference any contacts previously saved for this event, straight from the
     // Event_Contacts tab of the sheet.
     loadSavedContacts(ev);
+    loadSavedPlaybook(ev);
   }
   el('event-modal').addEventListener('click',function(e){
     if(e.target===el('event-modal')||e.target.closest('.js-modal-skip')){
