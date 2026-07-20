@@ -302,6 +302,8 @@ tbody tr:hover{background:var(--surface-hover)}
 #panel-playbook .pb2-owner--both{background:var(--pb-cyan);color:#fff}
 /* completion date stamp — shown only on checked-off activities */
 #panel-playbook .pb2-donedate{font-size:12px;font-weight:600;color:var(--pb-green);background:rgba(15,122,63,.08);border-radius:5px;padding:4px 9px;white-space:nowrap}
+/* event-type badge — shown beside the auto-filled "Date scheduled" activity */
+#panel-playbook .pb2-typebadge{font-size:11px;font-weight:700;text-transform:capitalize;color:var(--pb-blue);background:rgba(0,122,255,.10);border-radius:5px;padding:4px 9px;white-space:nowrap}
 /* "AI is reading the saved notes" indicator (playbook header) */
 #panel-playbook .pb2-ai{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--pb-blue)}
 #panel-playbook .pb2-ai .spin{border-color:rgba(0,122,255,.25);border-top-color:var(--pb-blue)}
@@ -1020,10 +1022,16 @@ tbody tr:hover{background:var(--surface-hover)}
       // Checked items carry a completion-date stamp (from the note that
       // evidenced them, or the day they were checked by hand).
       var when=a.d?pbFmtDue(a.dt):'';
+      // The "Date scheduled" activity is auto-filled from the event's own
+      // date on open (see pbAutoFillDateScheduled); once checked, show the
+      // event type beside the scheduled date, mirroring the event header.
+      var typeBadge=(a.d&&s.key==='setup'&&a.x==='Date scheduled'&&state.event&&state.event.type)
+        ?'<span class="pb2-typebadge" title="Event type">'+esc(state.event.type)+'</span>':'';
       return '<div class="pb2-act'+(a.d?' pb2-act--done':'')+'" data-stage="'+s.key+'" data-idx="'+j+'">'
         +'<button type="button" class="pb2-tick" aria-label="Mark activity done">'+PB_CHECK+'</button>'
         +'<span class="pb2-acttext">'+esc(pbActText(a))+'</span>'
         +'<button type="button" class="pb2-owner pb2-owner--'+a.o+'" title="Owner — click to switch Recast / '+esc(pbPartnerName())+' / Both">'+esc(pbOwnerLabel(a.o))+'</button>'
+        +typeBadge
         +(when?'<span class="pb2-donedate" title="Completed">✓ '+esc(when)+'</span>':'')
         +'</div>';
     }).join('');
@@ -1147,6 +1155,9 @@ tbody tr:hover{background:var(--surface-hover)}
       if(state.event!==ev) return;               // user switched events while loading
       if(res&&res.ok&&res.stages&&Object.keys(res.stages).length){
         pbMergeSaved(res.stages);
+        // Saved rows can leave "Date scheduled" unchecked — re-apply the
+        // auto-fill on top of the merge and persist it if it changed.
+        if(pbAutoFillDateScheduled(ev)) pbQueueSave();
         pbOpen=null;
         renderPlaybook();
       }
@@ -1198,6 +1209,24 @@ tbody tr:hover{background:var(--surface-hover)}
       if(state.event!==ev||run!==pbAiRun) return;
       pbAiBusy=false;renderPlaybook(); // silent — checking stays manual until the next analysis
     });
+  }
+  /* ---- Auto-fill: the Event stage's "Date scheduled" activity ----
+     Runs on every event open (demo, sheet, and after saved rows merge). When
+     the event has a scheduled date — the same date shown at the top of the
+     page — the "Date scheduled" activity is checked off automatically and
+     stamped with that date; the event type is shown beside it at render time
+     (see pbCard). Deterministic and AI-independent: it only ever CHECKS this
+     one activity and never touches anything else. Returns true if it changed
+     state so the caller can persist. */
+  function pbAutoFillDateScheduled(ev){
+    if(!ev||state.event!==ev||!ev.start) return false;   // no date at the top → nothing to fill
+    var s=pbStage('setup'); if(!s) return false;
+    var a=null;
+    for(var i=0;i<s.acts.length;i++){ if(s.acts[i].x==='Date scheduled'){a=s.acts[i];break;} }
+    if(!a||a.d) return false;                             // missing or already checked
+    a.d=true;
+    a.dt=pbFmtISO(ev.start);                              // stamp with the event's scheduled date
+    return true;
   }
   function resultsAnchor(){
     var mtg=nMeeting(),dec=nDeclined(),todo=nTodo();
@@ -2303,6 +2332,7 @@ tbody tr:hover{background:var(--surface-hover)}
     clearTimeout(pbSaveTimer);
     pbAiRun++;pbAiBusy=false;      // supersede any in-flight notes analysis
     state.playbook=pbFreshState();
+    pbAutoFillDateScheduled(ev);   // check off "Date scheduled" from the event's own date
     pbOpen=null;
     renderEventHeader();
     rerenderData();
@@ -2345,6 +2375,8 @@ tbody tr:hover{background:var(--surface-hover)}
   });
 
   /* ================= init ================= */
+  if(!state.playbook||!state.playbook.length) state.playbook=pbFreshState();
+  pbAutoFillDateScheduled(state.event);   // demo event: check off "Date scheduled" from its date
   renderEventHeader();
   renderOverview();
   renderContacts();
